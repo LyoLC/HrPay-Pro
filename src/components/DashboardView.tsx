@@ -1,0 +1,421 @@
+import React from 'react';
+import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole } from '../types';
+import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight } from 'lucide-react';
+
+interface DashboardViewProps {
+  employees: Employee[];
+  contracts: Contract_Doc[];
+  attendance: AttendanceRecord[];
+  payrollHistory: PayrollProcessed[];
+  onNavigate: (section: any) => void;
+  currentUserRole: UserRole;
+}
+
+export default function DashboardView({
+  employees,
+  contracts,
+  attendance,
+  payrollHistory,
+  onNavigate,
+  currentUserRole
+}: DashboardViewProps) {
+  // Calculators
+  const totalEmployees = employees.length;
+  const activeEmployees = employees.filter(e => e.estado === 'Ativo').length;
+  
+  // Calculate total monthly payroll costs (Massa salarial from latest processed invoices)
+  const currentYear = 2026;
+  const latestProcessedMonth = 5; // May
+  const currentMonthProcessed = payrollHistory.filter(p => p.mes === latestProcessedMonth && p.ano === currentYear);
+  
+  const massaSalarial = currentMonthProcessed.reduce((sum, p) => sum + p.totalBruto, 0);
+  const totalLiquidoPago = currentMonthProcessed.reduce((sum, p) => sum + p.salarioLiquido, 0);
+  const totalInssRecolhido = currentMonthProcessed.reduce((sum, p) => sum + p.impostos.inssTrabalhador + p.impostos.inssPatronal, 0);
+  const totalIrpsRecolhido = currentMonthProcessed.reduce((sum, p) => sum + p.impostos.irps, 0);
+
+  // Contracts close to expiration (within 30 days from today June 21, 2026)
+  const today = new Date('2026-06-21');
+  const expiringContracts = contracts.filter(c => {
+    if (!c.dataFim || c.estado !== 'Ativo') return false;
+    const expirationDate = new Date(c.dataFim);
+    const diffTime = expirationDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays >= 0 && diffDays <= 45; // alert if expiring within 45 days
+  });
+
+  // Monthly average attendance rate
+  const totalAttendanceEntries = attendance.length;
+  const presentsAndDelays = attendance.filter(a => a.presente === 'Presente' || a.presente === 'Atraso').length;
+  const attendanceRate = totalAttendanceEntries > 0 
+    ? Math.round((presentsAndDelays / totalAttendanceEntries) * 100) 
+    : 92; // fallback
+
+  // Department payroll breakdown
+  const deptBreakdown = employees.reduce((acc: { [key: string]: { count: number, totalBase: number } }, emp) => {
+    if (!acc[emp.departamento]) {
+      acc[emp.departamento] = { count: 0, totalBase: 0 };
+    }
+    acc[emp.departamento].count += 1;
+    acc[emp.departamento].totalBase += emp.salarioBase;
+    return acc;
+  }, {});
+
+  const departmentData = Object.entries(deptBreakdown).map(([name, stats]) => ({
+    name,
+    count: stats.count,
+    totalBase: stats.totalBase,
+    percentage: Math.round((stats.totalBase / (massaSalarial || 195000)) * 100)
+  }));
+
+  // Format currency
+  const formatMT = (val: number) => {
+    return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val).replace('MZN', 'MT');
+  };
+
+  return (
+    <div className="space-y-6" id="dashboard-analitico">
+      {/* Welcome Banner */}
+      <div className="bg-emerald-950 rounded-2xl p-6 md:p-8 text-white relative overflow-hidden shadow-lg border border-emerald-900">
+        <div className="absolute top-0 right-0 w-80 h-80 rounded-full bg-emerald-800/10 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-8 -left-8 w-60 h-60 rounded-full bg-teal-800/20 blur-2xl pointer-events-none" />
+        
+        <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div className="md:col-span-2 space-y-2">
+            <span className="bg-emerald-500/20 text-emerald-400 text-[10px] font-bold tracking-widest uppercase px-2.5 py-1 rounded-full border border-emerald-500/30">
+              Painel Principal de Gestão — Perfil {currentUserRole}
+            </span>
+            <h2 className="text-2xl md:text-3xl font-extrabold tracking-tight">HRPay Pro: Visão Geral Executiva</h2>
+            <p className="text-emerald-200 text-xs md:text-sm max-w-xl leading-relaxed">
+              Bem-vindo ao sistema. Hoje é domingo, 21 de Junho de 2026. Estão consolidadas as informações salariais referentes ao mês de **Maio/2026**, com o cálculo progressivo de impostos legais de Moçambique.
+            </p>
+          </div>
+          <div className="flex md:justify-end">
+            <button
+              onClick={() => onNavigate('Processamento Salarial')}
+              className="bg-white hover:bg-slate-50 text-emerald-950 font-bold px-5 py-2.5 rounded-xl text-xs shadow-md transition-colors flex items-center space-x-2 cursor-pointer"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-600" />
+              <span>Processar Folha Salarial</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Main KPI Stats Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5" id="stats-kpi-grid">
+        {/* KPI 1: Colaboradores */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="p-2.5 bg-slate-50 text-slate-600 rounded-xl">
+              <Users className="w-5 h-5" />
+            </span>
+            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md flex items-center space-x-0.5">
+              <TrendingUp className="w-3 h-3" />
+              <span>100% Ativos</span>
+            </span>
+          </div>
+          <div className="mt-4">
+            <h4 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Funcionários Ativos</h4>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-black text-slate-800">{activeEmployees}</span>
+              <span className="text-xs text-slate-400 font-medium">de {totalEmployees} cadastrados</span>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 2: Massa Salarial */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="p-2.5 bg-emerald-50 text-emerald-600 rounded-xl">
+              <CreditCard className="w-5 h-5" />
+            </span>
+            <span className="text-[10px] font-bold text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md">
+              Último Mês
+            </span>
+          </div>
+          <div className="mt-4">
+            <h4 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Massa Bruta (Maio)</h4>
+            <div className="flex items-baseline space-x-1 mt-1">
+              <span className="text-xl font-black text-slate-800 leading-tight">
+                {formatMT(massaSalarial || 195000)}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 3: Vencimento de Contratos */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className={`p-2.5 rounded-xl ${expiringContracts.length > 0 ? 'bg-amber-100 text-amber-600' : 'bg-slate-50 text-slate-600'}`}>
+              <AlertTriangle className="w-5 h-5" />
+            </span>
+            {expiringContracts.length > 0 && (
+              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md animate-pulse">
+                Atenção
+              </span>
+            )}
+          </div>
+          <div className="mt-4">
+            <h4 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Alerta de Vencimento</h4>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-black text-slate-800">{expiringContracts.length}</span>
+              <span className="text-xs text-slate-400 font-medium">contratos</span>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 4: Assiduidade Mensal */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Calendar className="w-5 h-5" />
+            </span>
+            <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md">
+              Junho/26
+            </span>
+          </div>
+          <div className="mt-4">
+            <h4 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">Assiduidade Média</h4>
+            <div className="flex items-baseline space-x-2 mt-1">
+              <span className="text-2xl font-black text-slate-800">{attendanceRate}%</span>
+              <span className="text-xs text-slate-400 font-medium">da equipa</span>
+            </div>
+          </div>
+        </div>
+
+        {/* KPI 5: Custos de RH (Deduções arrecadadas) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div className="flex justify-between items-start">
+            <span className="p-2.5 bg-rose-50 text-rose-600 rounded-xl">
+              <Award className="w-5 h-5" />
+            </span>
+            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">
+              Impostos
+            </span>
+          </div>
+          <div className="mt-4">
+            <h4 className="text-slate-500 text-xs font-semibold uppercase tracking-wider">IRPS+INSS Arrecadado</h4>
+            <div className="flex items-baseline space-x-1 mt-1">
+              <span className="text-md font-bold text-slate-800">
+                {formatMT(totalInssRecolhido + totalIrpsRecolhido || 29845)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Main Analysis Panels */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Left 2 Columns: Custos de RH & Massa Chart */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm lg:col-span-2 space-y-6">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <div>
+              <h3 className="font-bold text-slate-800 text-md">Demonstrativo Financeiro (Maio/2026)</h3>
+              <p className="text-xs text-slate-400 font-medium">Comparação gráfica entre os principais componentes salariais processados</p>
+            </div>
+            <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2.5 py-1 rounded-lg">
+              Moeda: MT
+            </span>
+          </div>
+
+          {/* Simple Visual representation bar list */}
+          <div className="space-y-4">
+            {/* Component 1: Salário Líquido na Mão do Trabalhador */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-700 flex items-center space-x-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                  <span>Salário Líquido (Remuneração Direta)</span>
+                </span>
+                <span className="text-slate-950">{formatMT(totalLiquidoPago || 145000)}</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                <div className="bg-emerald-500 h-full rounded-full" style={{ width: '74%' }} />
+              </div>
+            </div>
+
+            {/* Component 2: Retenção na Fonte IRPS */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-700 flex items-center space-x-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-rose-500" />
+                  <span>Imposto de Rendimento (Retenção IRPS)</span>
+                </span>
+                <span className="text-slate-950">{formatMT(totalIrpsRecolhido || 14850)}</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                <div className="bg-rose-500 h-full rounded-full" style={{ width: '8%' }} />
+              </div>
+            </div>
+
+            {/* Component 3: Contribuição Segurança Social INSS (Trabalhador 3% + Patronal 4%) */}
+            <div className="space-y-1.5">
+              <div className="flex justify-between text-xs font-semibold">
+                <span className="text-slate-700 flex items-center space-x-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                  <span>Previdência Social (INSS Coletado 7%)</span>
+                </span>
+                <span className="text-slate-950">{formatMT(totalInssRecolhido || 12150)}</span>
+              </div>
+              <div className="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                <div className="bg-amber-500 h-full rounded-full" style={{ width: '6.5%' }} />
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Informational Box */}
+          <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-[11px] text-slate-500 leading-relaxed flex items-start space-x-2.5">
+            <Building2 className="w-4.5 h-4.5 text-slate-600 mt-0.5 shrink-0" />
+            <div>
+              <p className="font-bold text-slate-700">Regulamentação e Transparência fiscal:</p>
+              <p className="mt-0.5">O INSS de 3% deduzido na folha do funcionário é somado à parcela patronal obrigatória de 4% paga integralmente pela empresa, perfazendo o recolhimento consolidado de 7% às caixas da segurança nacional. O IRPS é deduzido progressivamente conforme a tabela nacional legalizada moçambicana.</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Custos por Departamentos */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex justify-between items-center pb-2 border-b border-slate-50 mb-4">
+              <h3 className="font-bold text-slate-800 text-sm">Distribuição por Departamentos</h3>
+              <span className="text-[10px] text-slate-400 font-mono">Bases</span>
+            </div>
+
+            <div className="space-y-4">
+              {departmentData.map((dept, idx) => {
+                const colors = ['bg-emerald-600', 'bg-blue-600', 'bg-purple-600', 'bg-amber-600', 'bg-rose-600'];
+                const accent = colors[idx % colors.length];
+
+                return (
+                  <div key={dept.name} className="space-y-1">
+                    <div className="flex justify-between text-xs font-semibold">
+                      <span className="text-slate-600 truncate max-w-[150px]">{dept.name}</span>
+                      <span className="text-slate-900 font-bold">{formatMT(dept.totalBase)}</span>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${accent}`} style={{ width: `${dept.percentage}%` }} />
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono w-6 text-right">
+                        {dept.percentage}%
+                      </span>
+                    </div>
+                    <div className="text-[9px] text-slate-400">
+                      {dept.count} {dept.count === 1 ? 'colaborador ativo' : 'colaboradores ativos'}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <button
+            onClick={() => onNavigate('Funcionários')}
+            className="w-full mt-6 bg-slate-50 hover:bg-slate-100 text-slate-600 font-bold py-2 rounded-xl text-xs border border-slate-200 transition-colors flex items-center justify-center space-x-1 cursor-pointer"
+          >
+            <span>Ver Listas de Utilizadores</span>
+            <ArrowUpRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Critical/Attention Section (Alerts of contracts ending and task monitoring) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Box A: Contratos Próximos de Vencer */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-rose-700">
+              <AlertTriangle className="w-4 h-4" />
+              <span>Aviso de Vencimento de Contratos (45 dias)</span>
+            </h3>
+            <span className="text-[10px] bg-rose-50 text-rose-700 font-bold px-2 py-0.5 rounded-full">
+              {expiringContracts.length} Alertas
+            </span>
+          </div>
+
+          {expiringContracts.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-400 font-medium">
+              Não há contratos expirando nos próximos 45 dias. Excelente controle!
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {expiringContracts.map(c => {
+                const emp = employees.find(e => e.id === c.funcionarioId);
+                const expiryDate = c.dataFim ? new Date(c.dataFim) : null;
+                const daysLeft = expiryDate 
+                  ? Math.ceil((expiryDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+                  : 0;
+
+                return (
+                  <div key={c.id} className="flex justify-between items-center p-3 bg-rose-50/50 rounded-xl border border-rose-100/60">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={emp?.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
+                        alt={emp?.nome}
+                        className="w-10 h-10 rounded-full object-cover border border-rose-200"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">{emp?.nome || 'Instabilidade'}</h4>
+                        <p className="text-[10px] text-slate-500 font-semibold">{emp?.cargo} — {c.tipo}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-rose-700 font-mono">{daysLeft} dias restantes</div>
+                      <p className="text-[9px] text-slate-400 font-semibold">Expira a {c.dataFim}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <button
+            onClick={() => onNavigate('Contratos')}
+            className="w-full text-center text-[11px] font-bold text-emerald-600 hover:underline pt-2 block"
+          >
+            Aceder ao Módulo de Contratos e Renovar Documentação
+          </button>
+        </div>
+
+        {/* Box B: Indicadores de Assiduidade */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm">Resumo Mensal de Assiduidade (Junho/2026)</h3>
+            <span className="text-[10px] text-slate-400">Total acumulado</span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="p-4 bg-emerald-50 rounded-xl border border-emerald-100/60 text-center">
+              <span className="block text-[10px] uppercase font-bold text-emerald-600 tracking-wider">Total Presenças</span>
+              <span className="block text-2xl font-black text-emerald-950 mt-1">
+                {attendance.filter(a => a.presente === 'Presente').length}
+              </span>
+              <span className="text-[9px] text-emerald-800/65 font-medium block mt-1">Registadas neste mês</span>
+            </div>
+
+            <div className="p-4 bg-rose-50 rounded-xl border border-rose-100/60 text-center">
+              <span className="block text-[10px] uppercase font-bold text-rose-600 tracking-wider">Faltas Injustificadas</span>
+              <span className="block text-2xl font-black text-rose-950 mt-1">
+                {attendance.filter(a => a.presente === 'Falta Injustificada').length}
+              </span>
+              <span className="text-[9px] text-rose-800/65 font-medium block mt-1">Com deduções em folha</span>
+            </div>
+          </div>
+
+          <div className="flex justify-between text-xs text-slate-500 font-medium px-1">
+            <span>Atrasos sinalizados: <b>{attendance.filter(a => a.presente === 'Atraso').length}</b></span>
+            <span>Justificáveis: <b>{attendance.filter(a => a.presente === 'Falta Justificada').length}</b></span>
+          </div>
+
+          <button
+            onClick={() => onNavigate('Assiduidade')}
+            className="w-full text-center text-[11px] font-bold text-emerald-600 hover:underline pt-2 block"
+          >
+            Lançar Presenças ou Horas Extras no Mapa Diário
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

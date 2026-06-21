@@ -1,0 +1,86 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  /* Geometric Balance - Precise Palette Overrides */
+  --color-slate-50: #F8F9FA; /* Crisp background from the theme spec */
+  --color-slate-100: #E2E8F0; /* Structured light border */
+  --color-slate-200: #CBD5E1; /* Secondary border line */
+  --color-slate-300: #94A3B8; /* Muted texts */
+  --color-slate-400: #64748B; /* Darker labels */
+  --color-slate-500: #475569;
+  --color-slate-600: #334155; /* Secondary text */
+  --color-slate-700: #1E293B; /* Headers / Primary text */
+  --color-slate-800: #334155; /* Inner menu border line */
+  --color-slate-900: #1E293B; /* Rigid sidebar background */
+  --color-slate-950: #0F172A; /* Solid dark corners & drawer headers */
+
+  /* Primary Accent & Brand Highlights: Sky/Ocean Blue (#38BDF8) */
+  --color-emerald-50: #F0F9FF; /* Light background highlights */
+  --color-emerald-100: #E0F2FE; /* Subtle badges background */
+  --color-emerald-250: #7DD3FC;
+  --color-emerald-300: #7DD3FC;
+  --color-emerald-400: #38BDF8;
+  --color-emerald-500: #38BDF8; /* Dynamic highlight key point */
+  --color-emerald-600: #38BDF8; /* Selected buttons & dynamic active items */
+  --color-emerald-700: #0284C7; /* Active click response states */
+  --color-emerald-800: #0369A1;
+  --color-emerald-900: #075985;
+  --color-emerald-950: #1E293B; /* Matching design's specific aside logo header block */
+
+  --color-teal-50: #F0FAFF;
+  --color-teal-100: #E0F2FE;
+  --color-teal-500: #38BDF8;
+  --color-teal-600: #38BDF8;
+  --color-teal-700: #0284C7;
+  --color-teal-800: #0369A1;
+  --color-teal-900: #1E293B;
+  --color-teal-950: #0F172A;
+}
+
+/* Custom layout defaults & fine alignments */
+html, body {
+  font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  background-color: #F8F9FA;
+  color: #2D3436;
+  scroll-behavior: smooth;
+}
+
+/* Geometric button, cards, tables alignment refinements */
+button, input, select, textarea {
+  font-family: inherit;
+}
+
+/* Aesthetic improvements: cards hover & scrollbar tuning */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94A3B8;
+}
+
+/* Card structures: flat border, sharp geometry, soft elevation */
+.geometric-flat-card {
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+}
+
+.geometric-active-highlight {
+  border-left: 4px solid #38BDF8;
+}
