@@ -38,8 +38,16 @@ export default function EmployeesView({
   const [formSalarioBase, setFormSalarioBase] = useState(15000);
   const [formTipoContrato, setFormTipoContrato] = useState<ContractType>('Contrato a prazo');
   const [formEstado, setFormEstado] = useState<'Ativo' | 'Inativo'>('Ativo');
+  const [formSkills, setFormSkills] = useState('');
 
   const [isFormOpen, setIsFormOpen] = useState(false);
+  
+  // Document Add States
+  const [isAddingDoc, setIsAddingDoc] = useState(false);
+  const [docName, setDocName] = useState('');
+  const [docType, setDocType] = useState('Cópia de BI');
+  const [docUrl, setDocUrl] = useState('');
+  const [docExpiry, setDocExpiry] = useState('');
 
   const departments = ['Todos', 'Engenharia de Software', 'Recursos Humanos', 'Logística', 'Administração', 'Financeiro'];
 
@@ -47,7 +55,8 @@ export default function EmployeesView({
   const filteredEmployees = employees.filter(emp => {
     const matchesSearch = emp.nome.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           emp.cargo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          emp.nuit.includes(searchTerm);
+                          emp.nuit.includes(searchTerm) ||
+                          (emp.skills && emp.skills.some(skill => skill.toLowerCase().includes(searchTerm.toLowerCase())));
     const matchesDept = selectedDept === 'Todos' || emp.departamento === selectedDept;
     const matchesEstado = selectedEstado === 'Todos' || emp.estado === selectedEstado;
     return matchesSearch && matchesDept && matchesEstado;
@@ -68,6 +77,7 @@ export default function EmployeesView({
     setFormSalarioBase(20000);
     setFormTipoContrato('Contrato a prazo');
     setFormEstado('Ativo');
+    setFormSkills('');
     setIsFormOpen(true);
   };
 
@@ -87,6 +97,7 @@ export default function EmployeesView({
     setFormSalarioBase(emp.salarioBase);
     setFormTipoContrato(emp.tipoContrato);
     setFormEstado(emp.estado);
+    setFormSkills(emp.skills ? emp.skills.join(', ') : '');
     setIsFormOpen(true);
   };
 
@@ -104,6 +115,8 @@ export default function EmployeesView({
 
     const defaultPhoto = formFoto.trim() || `https://images.unsplash.com/photo-${1500000000000 + Math.floor(Math.random() * 900000)}?w=300&auto=format&fit=crop&q=80`;
 
+    const parsedSkills = formSkills ? formSkills.split(',').map(s => s.trim()).filter(Boolean) : [];
+
     if (isEditing) {
       onUpdateEmployee(editingId, {
         nome: formName,
@@ -118,7 +131,8 @@ export default function EmployeesView({
         dataAdmissao: formDataAdmissao,
         salarioBase: Number(formSalarioBase),
         tipoContrato: formTipoContrato,
-        estado: formEstado
+        estado: formEstado,
+        skills: parsedSkills
       });
       // If we are looking at this detail, update it
       if (detailEmployee && detailEmployee.id === editingId) {
@@ -136,7 +150,8 @@ export default function EmployeesView({
           dataAdmissao: formDataAdmissao,
           salarioBase: Number(formSalarioBase),
           tipoContrato: formTipoContrato,
-          estado: formEstado
+          estado: formEstado,
+          skills: parsedSkills
         });
       }
     } else {
@@ -154,7 +169,8 @@ export default function EmployeesView({
         dataAdmissao: formDataAdmissao,
         salarioBase: Number(formSalarioBase),
         tipoContrato: formTipoContrato,
-        estado: 'Ativo'
+        estado: 'Ativo',
+        skills: parsedSkills
       };
       onCreateEmployee(newEmp);
     }
@@ -169,6 +185,30 @@ export default function EmployeesView({
         setDetailEmployee(null);
       }
     }
+  };
+
+  const handleAddDoc = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!detailEmployee) return;
+
+    const newDoc = {
+      id: `doc_${Date.now()}`,
+      nome: docName,
+      tipo: docType,
+      url: docUrl,
+      validade: docExpiry,
+      dataUpload: new Date().toISOString().split('T')[0]
+    };
+
+    const updatedDocs = [...(detailEmployee.documentos || []), newDoc];
+    onUpdateEmployee(detailEmployee.id, { documentos: updatedDocs });
+    setDetailEmployee({ ...detailEmployee, documentos: updatedDocs });
+
+    setIsAddingDoc(false);
+    setDocName('');
+    setDocUrl('');
+    setDocExpiry('');
+    setDocType('Cópia de BI');
   };
 
   return (
@@ -382,6 +422,89 @@ export default function EmployeesView({
                 </div>
               </div>
 
+              {detailEmployee.skills && detailEmployee.skills.length > 0 && (
+                <div className="border-t border-slate-50 pt-5 space-y-4">
+                  <h4 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Competências & Skills</h4>
+                  <div className="flex flex-wrap gap-2">
+                    {detailEmployee.skills.map((skill, idx) => (
+                      <span key={idx} className="bg-indigo-50 text-indigo-700 border border-indigo-100 text-[10px] px-2.5 py-1 rounded-full font-bold">
+                        {skill}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Documentos Obrigatórios */}
+              <div className="border-t border-slate-50 pt-5 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h4 className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest block mb-1">Documentos Obrigatórios</h4>
+                  {currentUserRole !== UserRole.SUPERVISOR && currentUserRole !== UserRole.FUNCIONARIO && (
+                    <button
+                      onClick={() => setIsAddingDoc(!isAddingDoc)}
+                      className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-700 px-2 py-1 rounded font-bold transition-colors"
+                    >
+                      {isAddingDoc ? 'Cancelar' : '+ Adicionar'}
+                    </button>
+                  )}
+                </div>
+
+                {isAddingDoc && (
+                  <form onSubmit={handleAddDoc} className="bg-slate-50 border border-slate-200 p-3 rounded-xl space-y-3 mb-3">
+                    <div>
+                      <input type="text" required placeholder="Nome do Ficheiro" className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docName} onChange={e => setDocName(e.target.value)} />
+                    </div>
+                    <div className="flex space-x-2">
+                      <select className="flex-1 text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docType} onChange={e => setDocType(e.target.value)}>
+                        <option value="Cópia de BI">Cópia de BI</option>
+                        <option value="Certificado Médico">Certificado Médico</option>
+                        <option value="Registo Criminal">Registo Criminal</option>
+                        <option value="Certificado Literário">Certificado Literário</option>
+                        <option value="Outro">Outro</option>
+                      </select>
+                      <input type="date" placeholder="Validade" className="flex-1 text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docExpiry} onChange={e => setDocExpiry(e.target.value)} title="Data de Validade (opcional)" />
+                    </div>
+                    <div>
+                      <input type="url" required placeholder="URL do Ficheiro (Drive, S3, etc)" className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docUrl} onChange={e => setDocUrl(e.target.value)} />
+                    </div>
+                    <button type="submit" className="w-full bg-emerald-600 text-white font-bold text-xs py-2 rounded-lg hover:bg-emerald-700">Guardar Documento</button>
+                  </form>
+                )}
+
+                {detailEmployee.documentos && detailEmployee.documentos.length > 0 ? (
+                  <div className="space-y-2">
+                    {detailEmployee.documentos.map(doc => {
+                      let isExpired = false;
+                      let isExpiringSoon = false;
+                      if (doc.validade) {
+                        const validadeDate = new Date(doc.validade);
+                        const today = new Date();
+                        const diffTime = validadeDate.getTime() - today.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        if (diffDays < 0) {
+                          isExpired = true;
+                        } else if (diffDays <= 30) {
+                          isExpiringSoon = true;
+                        }
+                      }
+                      
+                      return (
+                        <div key={doc.id} className={`p-3 border rounded-xl text-xs flex justify-between items-center ${isExpired ? 'border-rose-300 bg-rose-50' : isExpiringSoon ? 'border-amber-300 bg-amber-50' : 'border-slate-100 bg-slate-50'}`}>
+                          <div>
+                            <a href={doc.url} target="_blank" rel="noreferrer" className="font-bold text-emerald-600 hover:underline">{doc.nome}</a>
+                            <div className="text-[10px] text-slate-500 mt-0.5">{doc.tipo} {doc.validade && `• Validade: ${doc.validade}`}</div>
+                          </div>
+                          {isExpired && <span className="bg-rose-100 text-rose-700 px-2 py-0.5 rounded text-[10px] font-bold">Expirado</span>}
+                          {isExpiringSoon && <span className="bg-amber-100 text-amber-700 px-2 py-0.5 rounded text-[10px] font-bold">Expira em breve</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic">Nenhum documento registado.</p>
+                )}
+              </div>
+
               {currentUserRole !== UserRole.SUPERVISOR && currentUserRole !== UserRole.FUNCIONARIO && (
                 <div className="pt-2">
                   <button
@@ -531,6 +654,18 @@ export default function EmployeesView({
                   />
                 </div>
 
+                {/* Skills */}
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Competências / Skills (separadas por vírgula)</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                    placeholder="Ex: React, Node.js, Liderança, Gestão de Projetos"
+                    value={formSkills}
+                    onChange={e => setFormSkills(e.target.value)}
+                  />
+                </div>
+
                 {/* Data Admissao */}
                 <div>
                   <label className="text-xs font-semibold text-slate-600 block mb-1">Data de Admissão *</label>
@@ -619,6 +754,93 @@ export default function EmployeesView({
           </div>
         </div>
       )}
+
+      {/* Organizational Hierarchy Tree */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm overflow-hidden mt-6">
+        <div className="pb-4 border-b border-slate-50 mb-6">
+          <h3 className="text-md font-bold text-slate-800">Hierarquia Organizacional</h3>
+          <p className="text-xs text-slate-500 font-medium">Estrutura de funcionários por departamento e cargo</p>
+        </div>
+        <div className="overflow-x-auto">
+          <div className="min-w-max pb-4">
+            <div className="flex flex-col items-start ml-2 relative">
+              {/* Root Node */}
+              <div className="flex items-center mb-6 relative z-10">
+                <div className="bg-emerald-950 text-white font-bold text-xs px-4 py-2 rounded-lg shadow-sm">
+                  A Empresa
+                </div>
+              </div>
+              
+              <div className="pl-6 border-l-2 border-emerald-100 space-y-6 relative ml-4">
+                {departments.filter(d => d !== 'Todos').map((dept, index, array) => {
+                  const deptEmployees = employees.filter(e => e.departamento === dept && e.estado === 'Ativo');
+                  if (deptEmployees.length === 0) return null;
+
+                  // Group by roles
+                  const roleGroups = deptEmployees.reduce((acc, emp) => {
+                    if (!acc[emp.cargo]) acc[emp.cargo] = [];
+                    acc[emp.cargo].push(emp);
+                    return acc;
+                  }, {} as Record<string, Employee[]>);
+
+                  const isLastDept = index === array.length - 1;
+
+                  return (
+                    <div key={dept} className="relative">
+                      {/* Connector to department */}
+                      <div className="absolute -left-6 top-4 w-6 border-t-2 border-emerald-100" />
+                      {isLastDept && <div className="absolute -left-[26px] top-4 bottom-0 w-1 bg-white z-0" />}
+
+                      {/* Department Node */}
+                      <div className="bg-emerald-50 text-emerald-800 font-bold text-xs px-3 py-1.5 rounded-lg border border-emerald-200 inline-block mb-3 relative z-10">
+                        {dept} <span className="text-emerald-600/70 ml-1 font-normal">({deptEmployees.length})</span>
+                      </div>
+
+                      <div className="pl-6 border-l-2 border-slate-100 space-y-4 ml-3 relative">
+                        {Object.entries(roleGroups).map(([role, roleEmployees], rIndex, rArray) => {
+                          const isLastRole = rIndex === rArray.length - 1;
+                          
+                          return (
+                            <div key={role} className="relative">
+                              {/* Connector to role */}
+                              <div className="absolute -left-6 top-3 w-6 border-t-2 border-slate-100" />
+                              {isLastRole && <div className="absolute -left-[26px] top-3 bottom-0 w-1 bg-white z-0" />}
+
+                              {/* Role Node */}
+                              <div className="bg-slate-50 text-slate-700 font-semibold text-[11px] px-2.5 py-1 rounded border border-slate-200 inline-block mb-2 relative z-10">
+                                {role} <span className="text-slate-400 font-normal">({roleEmployees.length})</span>
+                              </div>
+
+                              <div className="pl-8 flex flex-col space-y-2 relative">
+                                {roleEmployees.map((emp, eIndex, eArray) => (
+                                  <div key={emp.id} className="flex items-center space-x-2 relative group">
+                                    <div className="absolute -left-8 top-3 w-8 border-t border-slate-200 border-dashed" />
+                                    {eIndex === eArray.length - 1 && <div className="absolute -left-[34px] top-3 bottom-0 w-1 bg-white z-0" />}
+                                    <img
+                                      src={emp.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
+                                      alt={emp.nome}
+                                      className="w-6 h-6 rounded-full object-cover border border-slate-200 z-10"
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    <span className="text-[11px] font-medium text-slate-600 group-hover:text-emerald-600 transition-colors cursor-pointer z-10" onClick={() => setDetailEmployee(emp)}>
+                                      {emp.nome}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

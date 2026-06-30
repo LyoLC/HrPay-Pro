@@ -99,13 +99,55 @@ export default function AttendanceView({
   const totalJustifiedAbs = empRecords.filter(r => r.presente === 'Falta Justificada').length;
   const totalUnjustifiedAbs = empRecords.filter(r => r.presente === 'Falta Injustificada').length;
   const totalOvertimeHours = empRecords.reduce((sum, r) => sum + r.horasExtras, 0);
+  const totalWorkedHours = (totalPresents + totalDelays) * 8 + totalOvertimeHours;
+
+  const handleExportCSV = () => {
+    let csvContent = 'Data,Funcionario,Estado,Horas Extras,Comentario\n';
+    
+    // Filter records for the current month/year
+    const monthlyRecords = attendance.filter(a => {
+      const [y, m] = a.data.split('-');
+      return parseInt(y) === selectedYear && parseInt(m) === selectedMonth;
+    });
+
+    monthlyRecords.forEach(r => {
+      const emp = employees.find(e => e.id === r.funcionarioId);
+      const empName = emp ? emp.nome : 'Desconhecido';
+      const row = [
+        r.data,
+        `"${empName}"`,
+        r.presente,
+        r.horasExtras,
+        `"${r.comentario || ''}"`
+      ];
+      csvContent += row.join(',') + '\n';
+    });
+
+    const filename = `Assiduidade_${selectedMonth.toString().padStart(2, '0')}_${selectedYear}.csv`;
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-6" id="attendance-section-grid">
       {/* Upper description */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-800">Mapa de Assiduidade e Presenças</h2>
-        <p className="text-xs text-slate-500 font-medium">Controlo diário de assiduidade, justificação de faltas administrativas e horas extraordinárias acumuladas</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h2 className="text-xl font-bold text-slate-800">Mapa de Assiduidade e Presenças</h2>
+          <p className="text-xs text-slate-500 font-medium">Controlo diário de assiduidade, justificação de faltas administrativas e horas extraordinárias acumuladas</p>
+        </div>
+        <button
+          onClick={handleExportCSV}
+          className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+        >
+          <span>Exportar Relatório Mensal (CSV)</span>
+        </button>
       </div>
 
       {/* Primary Layout Split: Calendar & Register Table + Side Summary Card */}
@@ -320,11 +362,101 @@ export default function AttendanceView({
                 </span>
                 <span className="text-md font-bold text-emerald-700 font-mono">{totalOvertimeHours} hrs</span>
               </div>
+
+              <div className="p-3 bg-indigo-50/40 rounded-xl border border-indigo-100/60 flex justify-between items-center">
+                <span className="text-xs text-indigo-800 font-semibold flex items-center space-x-2">
+                  <Clock className="w-4 h-4 text-indigo-500" />
+                  <span>Total de Horas Trabalhadas</span>
+                </span>
+                <span className="text-md font-bold text-indigo-700 font-mono">{totalWorkedHours} hrs</span>
+              </div>
             </div>
 
             <p className="text-[10px] text-slate-400 leading-relaxed font-semibold">
               * Nota: As faltas injustificadas geram desconto material automático na folha salarial de 3% por cada dia útil ausente (calculado sobre o vencimento de base).
             </p>
+          </div>
+
+          {/* Visual Monthly Calendar Grid Section */}
+          <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <h3 className="font-bold text-slate-800 text-sm border-b border-slate-50 pb-2">
+              Calendário Visual Mensal ({selectedMonth.toString().padStart(2, '0')}/{selectedYear})
+            </h3>
+            
+            <div className="grid grid-cols-7 gap-1 text-center">
+              {/* Weekday Headers */}
+              {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map(dayName => (
+                <div key={dayName} className="text-[10px] font-bold text-slate-400 uppercase tracking-wider py-1">
+                  {dayName}
+                </div>
+              ))}
+              
+              {/* Empty offset days */}
+              {(() => {
+                const firstDay = new Date(selectedYear, selectedMonth - 1, 1).getDay();
+                return Array.from({ length: firstDay }).map((_, i) => (
+                  <div key={`empty-${i}`} className="w-full aspect-square bg-transparent"></div>
+                ));
+              })()}
+
+              {/* Actual days */}
+              {(() => {
+                const daysInMonth = new Date(selectedYear, selectedMonth, 0).getDate();
+                return Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+                  const dateStr = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+                  const rec = empRecords.find(r => r.data === dateStr);
+                  
+                  let colorClass = 'bg-slate-50 text-slate-400 hover:bg-slate-100 border border-slate-100'; // Default
+                  let tooltip = `${day} ${dateStr}: Sem registo`;
+                  
+                  if (rec) {
+                    switch (rec.presente) {
+                      case 'Presente':
+                        colorClass = 'bg-emerald-500 text-white shadow-sm ring-1 ring-emerald-600/20';
+                        tooltip = `${day}: Presente`;
+                        break;
+                      case 'Atraso':
+                        colorClass = 'bg-amber-400 text-white shadow-sm ring-1 ring-amber-500/20';
+                        tooltip = `${day}: Atraso`;
+                        break;
+                      case 'Falta Justificada':
+                        colorClass = 'bg-blue-500 text-white shadow-sm ring-1 ring-blue-600/20';
+                        tooltip = `${day}: Falta Justificada (Férias/Licença)`;
+                        break;
+                      case 'Falta Injustificada':
+                        colorClass = 'bg-rose-500 text-white shadow-sm ring-1 ring-rose-600/20';
+                        tooltip = `${day}: Falta Injustificada`;
+                        break;
+                    }
+                  } else {
+                     // Check if it is a weekend
+                     const dObj = new Date(selectedYear, selectedMonth - 1, day);
+                     if (dObj.getDay() === 0 || dObj.getDay() === 6) {
+                        colorClass = 'bg-slate-100/50 text-slate-300';
+                        tooltip = `${day}: Fim de Semana`;
+                     }
+                  }
+
+                  return (
+                    <div 
+                      key={day} 
+                      title={tooltip}
+                      className={`w-full aspect-square rounded-lg ${colorClass} flex flex-col items-center justify-center cursor-help transition-all duration-200 hover:scale-105`}
+                    >
+                      <span className="text-xs font-black">{day}</span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+            
+            {/* Calendar Legend */}
+            <div className="flex flex-wrap gap-3 justify-center text-[9px] font-semibold text-slate-600 mt-4 bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+              <div className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded bg-emerald-500 shadow-xs"></span><span>Presente</span></div>
+              <div className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded bg-amber-400 shadow-xs"></span><span>Atraso</span></div>
+              <div className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded bg-blue-500 shadow-xs"></span><span>Férias/Licença/Justificada</span></div>
+              <div className="flex items-center space-x-1.5"><span className="w-2.5 h-2.5 rounded bg-rose-500 shadow-xs"></span><span>Injustificada/Ausente</span></div>
+            </div>
           </div>
         </div>
 

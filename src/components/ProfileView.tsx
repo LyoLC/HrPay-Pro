@@ -1,12 +1,13 @@
-import React, { useState } from 'react';
-import { User, Employee, Contract_Doc, ActivityTask, PayrollProcessed, UserRole } from '../types';
-import { UserCheck, Phone, MapPin, Mail, Award, Lock, FileText, Printer, CheckSquare, Sparkles, Save, ShieldAlert } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { User, Employee, Contract_Doc, ActivityTask, PayrollProcessed, UserRole, AttendanceRecord, EmployeeDocument } from '../types';
+import { UserCheck, Phone, MapPin, Mail, Award, Lock, FileText, Printer, CheckSquare, Sparkles, Save, ShieldAlert, CalendarDays, Camera, ImagePlus, X, FileBadge, Trash2 } from 'lucide-react';
 
 interface ProfileViewProps {
   currentUser: User;
   employees: Employee[];
   contracts: Contract_Doc[];
   tasks: ActivityTask[];
+  attendance?: AttendanceRecord[];
   payrollHistory: PayrollProcessed[];
   onUpdateEmployee: (id: string, updated: Partial<Employee>) => void;
   onPrintSlip: (payroll: PayrollProcessed) => void;
@@ -18,6 +19,7 @@ export default function ProfileView({
   employees,
   contracts,
   tasks,
+  attendance = [],
   payrollHistory,
   onUpdateEmployee,
   onPrintSlip,
@@ -43,6 +45,76 @@ export default function ProfileView({
     alert('Os seus dados de contacto pessoal foram transmitidos ao departamento de Recursos Humanos com sucesso.');
   };
 
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [docType, setDocType] = useState('BI');
+  const [docName, setDocName] = useState('Cartão de Identificação');
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraOpen(true);
+    } catch (err) {
+      console.error("Erro ao acessar a câmera:", err);
+      alert('Não foi possível aceder à sua câmara. Verifique as permissões.');
+    }
+  };
+
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      const stream = videoRef.current.srcObject as MediaStream;
+      stream.getTracks().forEach(track => track.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraOpen(false);
+  };
+
+  React.useEffect(() => {
+    return () => {
+      stopCamera();
+    };
+  }, []);
+
+  const capturePhoto = () => {
+    if (videoRef.current && canvasRef.current && linkedEmployee) {
+      const context = canvasRef.current.getContext('2d');
+      if (context) {
+        canvasRef.current.width = videoRef.current.videoWidth;
+        canvasRef.current.height = videoRef.current.videoHeight;
+        context.drawImage(videoRef.current, 0, 0, canvasRef.current.width, canvasRef.current.height);
+        const dataUrl = canvasRef.current.toDataURL('image/png');
+        
+        const newDoc: EmployeeDocument = {
+          id: `doc-${Date.now()}`,
+          nome: docName,
+          tipo: docType,
+          url: dataUrl,
+          dataUpload: new Date().toISOString().split('T')[0]
+        };
+
+        const currentDocs = linkedEmployee.documentos || [];
+        onUpdateEmployee(linkedEmployee.id, {
+          documentos: [...currentDocs, newDoc]
+        });
+
+        stopCamera();
+      }
+    }
+  };
+
+  const handleDeleteDocument = (docId: string) => {
+    if (linkedEmployee) {
+      const currentDocs = linkedEmployee.documentos || [];
+      onUpdateEmployee(linkedEmployee.id, {
+        documentos: currentDocs.filter(d => d.id !== docId)
+      });
+    }
+  };
+
   // Filter properties if Linked Employee exists
   const myContract = linkedEmployee 
     ? contracts.find(c => c.funcionarioId === linkedEmployee.id && c.estado === 'Ativo')
@@ -54,6 +126,10 @@ export default function ProfileView({
 
   const myPaychecks = linkedEmployee
     ? payrollHistory.filter(p => p.funcionarioId === linkedEmployee.id)
+    : [];
+
+  const myAttendance = linkedEmployee
+    ? attendance.filter(a => a.funcionarioId === linkedEmployee.id).sort((a, b) => new Date(b.data).getTime() - new Date(a.data).getTime())
     : [];
 
   const formatMT = (val: number) => {
@@ -208,6 +284,82 @@ export default function ProfileView({
               )}
             </div>
 
+            {/* Personal Documents */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center space-x-2 pb-2 border-b border-slate-50">
+                <FileBadge className="w-4.5 h-4.5 text-emerald-600" />
+                <span>Documentos Pessoais</span>
+              </h3>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Upload Action */}
+                <div className="bg-slate-50 rounded-xl border border-slate-100 p-4 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-800 mb-1">Adicionar Documento</h4>
+                    <p className="text-[10px] text-slate-500 mb-3">Tire uma foto do seu documento de identificação, NUIT ou atestado médico.</p>
+                  </div>
+                  
+                  {isCameraOpen ? (
+                    <div className="space-y-2">
+                      <div className="relative bg-black rounded-lg overflow-hidden">
+                        <video ref={videoRef} autoPlay playsInline className="w-full h-32 object-cover"></video>
+                        <canvas ref={canvasRef} className="hidden"></canvas>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <input type="text" value={docName} onChange={e => setDocName(e.target.value)} placeholder="Nome (Ex: BI)" className="p-1.5 border border-slate-200 rounded font-semibold focus:outline-none focus:border-emerald-500" />
+                        <select value={docType} onChange={e => setDocType(e.target.value)} className="p-1.5 border border-slate-200 rounded font-semibold focus:outline-none focus:border-emerald-500 bg-white">
+                          <option value="BI">BI</option>
+                          <option value="NUIT">NUIT</option>
+                          <option value="Atestado">Atestado Médico</option>
+                          <option value="Outro">Outro</option>
+                        </select>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={capturePhoto} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow-sm transition-colors">
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>Capturar</span>
+                        </button>
+                        <button onClick={stopCamera} className="bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold py-1.5 px-3 rounded-lg flex items-center justify-center shadow-sm transition-colors">
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={startCamera} className="bg-white border border-slate-200 hover:border-emerald-300 hover:text-emerald-700 text-slate-700 text-xs font-bold py-2 px-3 rounded-lg flex items-center justify-center space-x-1.5 shadow-sm transition-colors w-full">
+                      <ImagePlus className="w-4 h-4" />
+                      <span>Usar Câmara</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Document List */}
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {linkedEmployee?.documentos && linkedEmployee.documentos.length > 0 ? (
+                    linkedEmployee.documentos.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 rounded bg-white border border-slate-200 overflow-hidden flex-shrink-0">
+                            <img src={doc.url} alt={doc.nome} className="w-full h-full object-cover" />
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">{doc.nome}</p>
+                            <p className="text-[9px] text-slate-500 uppercase">{doc.tipo} • {doc.dataUpload}</p>
+                          </div>
+                        </div>
+                        <button onClick={() => handleDeleteDocument(doc.id)} className="text-slate-400 hover:text-rose-600 p-1 rounded transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="h-full flex items-center justify-center border-2 border-dashed border-slate-100 rounded-xl p-4">
+                      <p className="text-xs text-slate-400 font-medium text-center">Nenhum documento<br/>carregado.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
             {/* List of Tasks Assigned to me */}
             <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
               <h3 className="font-extrabold text-slate-800 text-sm flex items-center space-x-2 pb-2 border-b border-slate-50">
@@ -240,6 +392,44 @@ export default function ProfileView({
                           <option value="Em Progresso">Em Progresso</option>
                           <option value="Concluída">Concluída</option>
                         </select>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Attendance History */}
+            <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+              <h3 className="font-extrabold text-slate-800 text-sm flex items-center space-x-2 pb-2 border-b border-slate-50">
+                <CalendarDays className="w-4.5 h-4.5 text-emerald-600" />
+                <span>O Meu Histórico de Assiduidade ({myAttendance.length})</span>
+              </h3>
+
+              {myAttendance.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 italic">Não há registos de assiduidade associados a si.</p>
+              ) : (
+                <div className="space-y-2.5 max-h-60 overflow-y-auto pr-2">
+                  {myAttendance.map(a => (
+                    <div key={a.id} className="flex justify-between items-center p-3.5 bg-slate-50 rounded-xl border border-slate-100 text-xs font-semibold">
+                      <div className="space-y-0.5">
+                        <h4 className="font-bold text-slate-800">{a.data}</h4>
+                        {a.comentario && <p className="text-[10px] text-slate-400">{a.comentario}</p>}
+                      </div>
+                      <div className="flex flex-col items-end space-y-1">
+                        <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${
+                          a.presente === 'Presente' ? 'bg-emerald-50 text-emerald-700' :
+                          a.presente === 'Atraso' ? 'bg-amber-50 text-amber-700' :
+                          a.presente === 'Falta Justificada' ? 'bg-blue-50 text-blue-700' :
+                          'bg-rose-50 text-rose-700'
+                        }`}>
+                          {a.presente}
+                        </span>
+                        {a.horasExtras > 0 && (
+                          <span className="text-[9px] text-blue-600 font-bold uppercase">
+                            +{a.horasExtras}h Extras
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}

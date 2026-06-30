@@ -6,6 +6,7 @@ interface ReportsViewProps {
   payrollHistory: PayrollProcessed[];
   employees: Employee[];
   onTriggerGlobalPrint: () => void;
+  onPrintMultipleSlips?: (payrolls: PayrollProcessed[]) => void;
 }
 
 type ReportTab = 'Folha Salarial' | 'INSS' | 'IRPS' | 'Descontos';
@@ -13,11 +14,13 @@ type ReportTab = 'Folha Salarial' | 'INSS' | 'IRPS' | 'Descontos';
 export default function ReportsView({
   payrollHistory,
   employees,
-  onTriggerGlobalPrint
+  onTriggerGlobalPrint,
+  onPrintMultipleSlips
 }: ReportsViewProps) {
   const [activeTab, setActiveTab] = useState<ReportTab>('Folha Salarial');
   const [selectedMonth, setSelectedMonth] = useState(5); // May (since May has pre-populated payments on boot!)
   const [selectedYear, setSelectedYear] = useState(2026);
+  const [selectedPayrolls, setSelectedPayrolls] = useState<string[]>([]);
 
   // Filter payroll list for chosen interval
   const paymentsInInterval = payrollHistory.filter(
@@ -39,10 +42,105 @@ export default function ReportsView({
   const sumAbsenceDeduction = paymentsInInterval.reduce((sum, p) => sum + p.faltasDeducao, 0);
   const sumNet = paymentsInInterval.reduce((sum, p) => sum + p.salarioLiquido, 0);
 
-  // Trigger export simulations
+  // Trigger actual CSV export
+  const handleExportCSV = () => {
+    let csvContent = '';
+    const separator = ',';
+
+    if (activeTab === 'Folha Salarial') {
+      const headers = ['Funcionário', 'Salário Base (MT)', 'Proventos (MT)', 'Deduções (MT)', 'Líquido (MT)', 'Estado'];
+      csvContent += headers.join(separator) + '\n';
+      paymentsInInterval.forEach(p => {
+        const proventos = p.totalBruto - p.salarioBase;
+        const deducoes = p.totalBruto - p.salarioLiquido;
+        const emp = employees.find(e => e.id === p.funcionarioId);
+        const name = emp ? emp.nome : 'Desconhecido';
+        const row = [
+          `"${name}"`,
+          p.salarioBase,
+          proventos,
+          deducoes,
+          p.salarioLiquido,
+          p.pago ? 'PAGO' : 'PENDENTE'
+        ];
+        csvContent += row.join(separator) + '\n';
+      });
+    } else if (activeTab === 'INSS') {
+      const headers = ['Funcionário', 'Salário Bruto (MT)', 'INSS Trabalhador (MT)', 'INSS Patronal (MT)', 'Total INSS (MT)'];
+      csvContent += headers.join(separator) + '\n';
+      paymentsInInterval.forEach(p => {
+        const emp = employees.find(e => e.id === p.funcionarioId);
+        const name = emp ? emp.nome : 'Desconhecido';
+        const inssT = p.impostos.inssTrabalhador;
+        const inssP = p.impostos.inssPatronal;
+        const total = inssT + inssP;
+        const row = [`"${name}"`, p.totalBruto, inssT, inssP, total];
+        csvContent += row.join(separator) + '\n';
+      });
+    } else if (activeTab === 'IRPS') {
+      const headers = ['Funcionário', 'Salário Bruto (MT)', 'INSS Trabalhador (MT)', 'Matéria Colectável (MT)', 'IRPS Retido (MT)'];
+      csvContent += headers.join(separator) + '\n';
+      paymentsInInterval.forEach(p => {
+        const emp = employees.find(e => e.id === p.funcionarioId);
+        const name = emp ? emp.nome : 'Desconhecido';
+        const inssT = p.impostos.inssTrabalhador;
+        const materiaColectavel = p.totalBruto - inssT;
+        const row = [`"${name}"`, p.totalBruto, inssT, materiaColectavel, p.impostos.irps];
+        csvContent += row.join(separator) + '\n';
+      });
+    } else if (activeTab === 'Descontos') {
+      const headers = ['Funcionário', 'Faltas Injust. (MT)', 'Vales (MT)', 'Outros (MT)', 'Total Descontos (MT)'];
+      csvContent += headers.join(separator) + '\n';
+      paymentsInInterval.forEach(p => {
+        const emp = employees.find(e => e.id === p.funcionarioId);
+        const name = emp ? emp.nome : 'Desconhecido';
+        const totalDescontos = p.faltasDeducao + p.vales + p.impostos.outrosDescontos;
+        const row = [`"${name}"`, p.faltasDeducao, p.vales, p.impostos.outrosDescontos, totalDescontos];
+        csvContent += row.join(separator) + '\n';
+      });
+    }
+
+    const filename = `Relatorio_${activeTab.replace(/\s+/g, '_')}_${selectedMonth}_${selectedYear}.csv`;
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const handleExportSimulated = (format: 'CSV' | 'Excel' | 'PDF') => {
-    const filename = `Relatorio_${activeTab.replace(/\s+/g, '_')}_${selectedMonth}_${selectedYear}.${format.toLowerCase() === 'excel' ? 'xlsx' : format.toLowerCase()}`;
-    alert(`Exportação iniciada para o formato ${format}! O download do arquivo "${filename}" será processado brevemente com todos os dados legítimos compilados.`);
+    if (format === 'CSV' || format === 'Excel') {
+      handleExportCSV();
+    } else {
+      const filename = `Relatorio_${activeTab.replace(/\s+/g, '_')}_${selectedMonth}_${selectedYear}.${format.toLowerCase()}`;
+      alert(`Exportação iniciada para o formato ${format}! O download do arquivo "${filename}" será processado brevemente.`);
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedPayrolls.length === paymentsInInterval.length) {
+      setSelectedPayrolls([]);
+    } else {
+      setSelectedPayrolls(paymentsInInterval.map(p => p.id));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    if (selectedPayrolls.includes(id)) {
+      setSelectedPayrolls(selectedPayrolls.filter(pid => pid !== id));
+    } else {
+      setSelectedPayrolls([...selectedPayrolls, id]);
+    }
+  };
+
+  const handlePrintSelected = () => {
+    if (onPrintMultipleSlips && selectedPayrolls.length > 0) {
+      const selected = paymentsInInterval.filter(p => selectedPayrolls.includes(p.id));
+      onPrintMultipleSlips(selected);
+    }
   };
 
   return (
@@ -122,12 +220,22 @@ export default function ReportsView({
 
           {/* Export tools */}
           <div className="flex space-x-2 shrink-0">
+            {activeTab === 'Folha Salarial' && selectedPayrolls.length > 0 && (
+              <button
+                onClick={handlePrintSelected}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 cursor-pointer shadow-sm"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Imprimir Selecionados ({selectedPayrolls.length})</span>
+              </button>
+            )}
+
             <button
               onClick={onTriggerGlobalPrint}
               className="bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Imprimir</span>
+              <span>Imprimir Mapa Geral</span>
             </button>
 
             <button
@@ -162,7 +270,15 @@ export default function ReportsView({
                 <table className="w-full text-left border-collapse" id="report-sheet-folha-salarial">
                   <thead>
                     <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-50/10">
-                      <th className="py-4 px-6">Funcionário</th>
+                      <th className="py-4 px-4 w-10">
+                        <input 
+                          type="checkbox" 
+                          className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                          checked={selectedPayrolls.length > 0 && selectedPayrolls.length === paymentsInInterval.length}
+                          onChange={toggleSelectAll}
+                        />
+                      </th>
+                      <th className="py-4 px-2">Funcionário</th>
                       <th className="py-4 px-3">Cargo Inicial</th>
                       <th className="py-4 px-3">Salário Base</th>
                       <th className="py-4 px-3">Bônus & Subs.</th>
@@ -180,7 +296,15 @@ export default function ReportsView({
 
                       return (
                         <tr key={p.id} className="hover:bg-slate-50/20 transition-colors">
-                          <td className="py-4 px-6 font-bold text-slate-800">{emp?.nome || 'Utilizador'}</td>
+                          <td className="py-4 px-4 w-10">
+                            <input 
+                              type="checkbox" 
+                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                              checked={selectedPayrolls.includes(p.id)}
+                              onChange={() => toggleSelect(p.id)}
+                            />
+                          </td>
+                          <td className="py-4 px-2 font-bold text-slate-800">{emp?.nome || 'Utilizador'}</td>
                           <td className="py-4 px-3 text-slate-500 font-bold">{emp?.cargo}</td>
                           <td className="py-4 px-3 font-mono text-slate-600">{formatMT(p.salarioBase)}</td>
                           <td className="py-4 px-3 font-mono text-emerald-600">+{formatMT(allowancesSum)}</td>
@@ -194,7 +318,7 @@ export default function ReportsView({
                     })}
                     {/* Sum aggregate summary row */}
                     <tr className="bg-slate-50/80 font-black border-t-2 border-slate-200">
-                      <td colSpan={2} className="py-4 px-6 text-slate-800">TOTAL CONSOLIDADO</td>
+                      <td colSpan={3} className="py-4 px-6 text-slate-800">TOTAL CONSOLIDADO</td>
                       <td className="py-4 px-3 font-mono">{formatMT(sumBase)}</td>
                       <td className="py-4 px-3 font-mono text-emerald-700">+{formatMT(paymentsInInterval.reduce((sum, p) => sum + p.bonus + p.subsidioTransporte + p.subsidioAlimentacao + p.comissoes + p.horasExtras, 0))}</td>
                       <td className="py-4 px-3 font-mono text-slate-900">{formatMT(sumGross)}</td>

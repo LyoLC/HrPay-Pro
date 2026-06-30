@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ActivityTask, Employee, TaskStatus, TaskPriority, UserRole } from '../types';
-import { ClipboardList, Plus, AlertCircle, Clock, CheckCircle2, MessageSquare, ChevronRight, Bookmark } from 'lucide-react';
+import { ClipboardList, Plus, AlertCircle, Clock, CheckCircle2, MessageSquare, ChevronRight, Bookmark, Search } from 'lucide-react';
 
 interface ActivitiesViewProps {
   tasks: ActivityTask[];
@@ -19,6 +19,7 @@ export default function ActivitiesView({
 }: ActivitiesViewProps) {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<ActivityTask | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
 
   // Form states
   const [formTitulo, setFormTitulo] = useState('');
@@ -26,6 +27,7 @@ export default function ActivitiesView({
   const [formEmpId, setFormEmpId] = useState('');
   const [formPrazo, setFormPrazo] = useState('');
   const [formPriority, setFormPriority] = useState<TaskPriority>('Média');
+  const [formCategory, setFormCategory] = useState<ActivityTask['categoria']>('Geral');
 
   // Comment state
   const [newCommentText, setNewCommentText] = useState('');
@@ -52,7 +54,9 @@ export default function ActivitiesView({
       descricao: formDesc,
       funcionarioId: formEmpId,
       prazo: formPrazo || new Date().toISOString().split('T')[0],
+      dueDate: formPrazo || new Date().toISOString().split('T')[0],
       prioridade: formPriority,
+      categoria: formCategory,
       estado: 'Pendente',
       comentarios: []
     };
@@ -65,6 +69,7 @@ export default function ActivitiesView({
     setFormDesc('');
     setFormEmpId('');
     setFormPrazo('');
+    setFormCategory('Geral');
   };
 
   const handleAddComment = (e: React.FormEvent) => {
@@ -86,10 +91,18 @@ export default function ActivitiesView({
   };
 
   // Productivity metrics
-  const totalTasks = tasks.length;
-  const completedCount = tasks.filter(t => t.estado === 'Concluída').length;
-  const progressCount = tasks.filter(t => t.estado === 'Em Progresso').length;
-  const pendingCount = tasks.filter(t => t.estado === 'Pendente').length;
+  const filteredTasks = tasks.filter(t => {
+    if (!searchTerm) return true;
+    const emp = employees.find(e => e.id === t.funcionarioId);
+    const matchesTitle = t.titulo.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesEmp = emp ? emp.nome.toLowerCase().includes(searchTerm.toLowerCase()) : false;
+    return matchesTitle || matchesEmp;
+  });
+
+  const totalTasks = filteredTasks.length;
+  const completedCount = filteredTasks.filter(t => t.estado === 'Concluída').length;
+  const progressCount = filteredTasks.filter(t => t.estado === 'Em Progresso').length;
+  const pendingCount = filteredTasks.filter(t => t.estado === 'Pendente').length;
   const completionPercentage = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   const getPriorityColor = (prio: TaskPriority) => {
@@ -106,6 +119,18 @@ export default function ActivitiesView({
           <h2 className="text-xl font-bold text-slate-800">Quadro de Atividades e Tarefas</h2>
           <p className="text-xs text-slate-500 font-medium">Controlo de projectos, atribuição de tarefas operacionais e reports de produtividade</p>
         </div>
+
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative flex-1 sm:flex-none sm:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Procurar tarefa ou funcionário..."
+              className="w-full bg-white border border-slate-200 rounded-xl py-2 pl-9 pr-4 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+            />
+          </div>
 
         {currentUser.perfil !== UserRole.FUNCIONARIO && (
           <button
@@ -125,6 +150,7 @@ export default function ActivitiesView({
             <span>Criar Nova Tarefa</span>
           </button>
         )}
+        </div>
       </div>
 
       {/* Productivity Bar KPI */}
@@ -166,12 +192,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Pendente</h3>
             </div>
             <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
-              {tasks.filter(t => t.estado === 'Pendente').length}
+              {filteredTasks.filter(t => t.estado === 'Pendente').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {tasks.filter(t => t.estado === 'Pendente').map(task => (
+            {filteredTasks.filter(t => t.estado === 'Pendente').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
@@ -193,12 +219,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Em Progresso</h3>
             </div>
             <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold">
-              {tasks.filter(t => t.estado === 'Em Progresso').length}
+              {filteredTasks.filter(t => t.estado === 'Em Progresso').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {tasks.filter(t => t.estado === 'Em Progresso').map(task => (
+            {filteredTasks.filter(t => t.estado === 'Em Progresso').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
@@ -220,12 +246,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Concluída</h3>
             </div>
             <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">
-              {tasks.filter(t => t.estado === 'Concluída').length}
+              {filteredTasks.filter(t => t.estado === 'Concluída').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {tasks.filter(t => t.estado === 'Concluída').map(task => (
+            {filteredTasks.filter(t => t.estado === 'Concluída').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
@@ -323,6 +349,21 @@ export default function ActivitiesView({
                     <option value="Alta">Alta</option>
                   </select>
                 </div>
+
+                {/* Category */}
+                <div className="col-span-2">
+                  <label className="text-xs font-semibold text-slate-600 block mb-1">Categoria</label>
+                  <select
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none"
+                    value={formCategory}
+                    onChange={e => setFormCategory(e.target.value as ActivityTask['categoria'])}
+                  >
+                    <option value="Geral">Geral</option>
+                    <option value="Administrativo">Administrativo</option>
+                    <option value="Salarial">Salarial</option>
+                    <option value="Recrutamento">Recrutamento</option>
+                  </select>
+                </div>
               </div>
 
               {/* Buttons */}
@@ -369,6 +410,11 @@ export default function ActivitiesView({
                   <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded border ${getPriorityColor(selectedTaskDetails.prioridade)}`}>
                     Prioridade {selectedTaskDetails.prioridade}
                   </span>
+                  {selectedTaskDetails.categoria && (
+                    <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded border bg-indigo-50 text-indigo-700 border-indigo-200">
+                      {selectedTaskDetails.categoria}
+                    </span>
+                  )}
                   <span className="text-[10px] text-slate-400 font-bold font-mono">ID: {selectedTaskDetails.id}</span>
                 </div>
                 <h4 className="text-slate-800 font-extrabold text-lg leading-snug">{selectedTaskDetails.titulo}</h4>
@@ -402,7 +448,7 @@ export default function ActivitiesView({
                   <span className="text-slate-400 block mb-1">Prazo Máximo</span>
                   <div className="text-slate-800 font-extrabold flex items-center space-x-1 font-mono">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
-                    <span>{selectedTaskDetails.prazo}</span>
+                    <span>{selectedTaskDetails.dueDate || selectedTaskDetails.prazo}</span>
                   </div>
                 </div>
               </div>
@@ -500,16 +546,57 @@ function TaskTile({
   const emp = employees.find(e => e.id === task.funcionarioId);
   const commentCount = task.comentarios.length;
 
+  const activeDateStr = task.dueDate || task.prazo;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  
+  let isOverdue = false;
+  let isApproachingDeadline = false;
+  
+  if (activeDateStr) {
+    const [y, m, d] = activeDateStr.split('-').map(Number);
+    const dueDateObj = new Date(y, m - 1, d);
+    const diffDays = Math.ceil((dueDateObj.getTime() - today.getTime()) / (1000 * 3600 * 24));
+    
+    isOverdue = diffDays < 0 && task.estado !== 'Concluída';
+    isApproachingDeadline = diffDays >= 0 && diffDays <= 2 && task.estado !== 'Concluída';
+  }
+
+  let dateColor = "text-slate-400";
+  let dateIconColor = "text-slate-400";
+  let warningBg = "";
+  if (isOverdue) {
+    dateColor = "text-rose-600 font-extrabold";
+    dateIconColor = "text-rose-600";
+    warningBg = "bg-rose-50/50 border-rose-200";
+  } else if (isApproachingDeadline) {
+    dateColor = "text-amber-600 font-extrabold";
+    dateIconColor = "text-amber-600";
+    warningBg = "bg-amber-50/50 border-amber-200";
+  }
+
   return (
     <div
       onClick={() => onSelect(task)}
-      className="p-4 bg-white rounded-xl border border-slate-100 shadow-sm hover:shadow-md hover:border-slate-300 transition-all cursor-pointer space-y-3"
+      className={`p-4 rounded-xl border shadow-sm hover:shadow-md transition-all cursor-pointer space-y-3 ${warningBg ? warningBg : 'bg-white border-slate-100 hover:border-slate-300'}`}
     >
       <div className="flex justify-between items-start">
-        <span className={`px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border ${getPriorityColor(task.prioridade)}`}>
-          {task.prioridade}
-        </span>
-        <span className="text-[9px] text-slate-400 font-mono font-bold">#{task.id.slice(-4)}</span>
+        <div className="flex space-x-1">
+          <span className={`px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border ${getPriorityColor(task.prioridade)}`}>
+            {task.prioridade}
+          </span>
+          {task.categoria && (
+            <span className="px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border bg-indigo-50 text-indigo-700 border-indigo-200">
+              {task.categoria}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2">
+          {(isOverdue || isApproachingDeadline) && (
+            <AlertCircle className={`w-3.5 h-3.5 ${dateIconColor}`} />
+          )}
+          <span className="text-[9px] text-slate-400 font-mono font-bold">#{task.id.slice(-4)}</span>
+        </div>
       </div>
 
       <div className="space-y-1">
@@ -525,9 +612,9 @@ function TaskTile({
 
       {/* Date, Comment count and Avatar row */}
       <div className="flex justify-between items-center border-t border-slate-50 pt-2.5">
-        <div className="flex items-center space-x-1.5 font-mono text-[9px] text-slate-400 font-bold">
-          <Clock className="w-3.5 h-3.5" />
-          <span>{task.prazo}</span>
+        <div className={`flex items-center space-x-1.5 font-mono text-[9px] ${dateColor}`}>
+          <Clock className={`w-3.5 h-3.5 ${dateIconColor}`} />
+          <span>{activeDateStr}</span>
         </div>
 
         <div className="flex items-center space-x-2">

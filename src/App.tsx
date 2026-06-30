@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react';
 import { 
   User, Employee, Contract_Doc, AttendanceRecord, ActivityTask, 
-  PayrollProcessed, CompanySettings, MenuSection, UserRole 
+  PayrollProcessed, CompanySettings, MenuSection, UserRole, CustomReportConfig
 } from './types';
 import { 
   MOCK_USERS, MOCK_EMPLOYEES, MOCK_CONTRACTS, MOCK_TASKS, 
   generateMockAttendance, generateMockPaymentsMay 
 } from './utils/mockData';
 import { DEFAULT_IRPS_BRACKETS } from './utils/calculations';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 // Components
 import LoginView from './components/LoginView';
@@ -18,6 +20,7 @@ import AttendanceView from './components/AttendanceView';
 import ActivitiesView from './components/ActivitiesView';
 import PayrollView from './components/PayrollView';
 import ReportsView from './components/ReportsView';
+import CustomReportsView from './components/CustomReportsView';
 import ConfigView from './components/ConfigView';
 import ProfileView from './components/ProfileView';
 import PrintView from './components/PrintView';
@@ -25,10 +28,31 @@ import PrintView from './components/PrintView';
 // Icons
 import { 
   LayoutDashboard, Users, FileLock2, CalendarDays, CheckSquare, 
-  Banknote, FileBarChart2, Settings, UserCircle, LogOut, Menu, X, Landmark 
+  Banknote, FileBarChart2, Settings, UserCircle, LogOut, Menu, X, Landmark, Bell, FileText, Moon, Sun
 } from 'lucide-react';
 
+import hrpayLogo from './assets/images/hrpay_pro_logo_1782570869903.jpg';
+
+import { 
+  fetchEmployees, saveEmployees, 
+  fetchContracts, saveContracts, 
+  fetchAttendance, saveAttendance, 
+  fetchTasks, saveTasks, 
+  fetchPayroll, savePayroll, 
+  fetchSettings, saveSettings,
+  fetchReports, saveReports,
+  subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges
+} from './lib/firestore';
+
 const LOCAL_STORAGE_PREFIX = 'hrpay_pro_v1_';
+
+interface AppNotification {
+  id: string;
+  title: string;
+  message: string;
+  date: Date;
+  read: boolean;
+}
 
 export default function App() {
   // Session Authentication state
@@ -36,12 +60,18 @@ export default function App() {
   const [activeSection, setActiveSection] = useState<MenuSection>('Dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Notifications State
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [initialLoadDone, setInitialLoadDone] = useState(false);
+
   // Core Database Collections State
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [contracts, setContracts] = useState<Contract_Doc[]>([]);
   const [attendance, setAttendance] = useState<AttendanceRecord[]>([]);
   const [tasks, setTasks] = useState<ActivityTask[]>([]);
   const [payrollHistory, setPayrollHistory] = useState<PayrollProcessed[]>([]);
+  const [reports, setReports] = useState<CustomReportConfig[]>([]);
   
   // Enterprise rules environment settings
   const [settings, setSettings] = useState<CompanySettings>({
@@ -60,107 +90,242 @@ export default function App() {
 
   // Printer manager state
   const [printingPayroll, setPrintingPayroll] = useState<PayrollProcessed | null>(null);
-  const [printMode, setPrintMode] = useState<'single' | 'general'>('single');
+  const [printingPayrolls, setPrintingPayrolls] = useState<PayrollProcessed[]>([]);
+  const [printMode, setPrintMode] = useState<'single' | 'general' | 'multiple_slips'>('single');
+
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    return localStorage.getItem(`${LOCAL_STORAGE_PREFIX}theme`) === 'dark';
+  });
+
+  useEffect(() => {
+    const html = document.documentElement;
+    if (isDarkMode) {
+      html.classList.add('dark');
+      localStorage.setItem(`${LOCAL_STORAGE_PREFIX}theme`, 'dark');
+    } else {
+      html.classList.remove('dark');
+      localStorage.setItem(`${LOCAL_STORAGE_PREFIX}theme`, 'light');
+    }
+
+    if (currentUser) {
+      setDoc(doc(db, 'userPreferences', currentUser.id), { isDarkMode }, { merge: true }).catch(err => {
+        console.error("Failed to save user preference", err);
+      });
+    }
+  }, [isDarkMode, currentUser]);
 
   // Trigger state load from LocalStorage or seed data
   useEffect(() => {
-    try {
-      // 1. User session recall if saved
-      const savedUser = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}session_user`);
-      if (savedUser) {
-        setCurrentUser(JSON.parse(savedUser));
-      }
+    const loadData = async () => {
+      try {
+        // 1. User session recall if saved (still using localStorage for session)
+        const savedUser = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}session_user`);
+        if (savedUser) {
+          setCurrentUser(JSON.parse(savedUser));
+        }
 
-      // 2. Employees recall
-      const savedEmployees = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}employees`);
-      if (savedEmployees) {
-        setEmployees(JSON.parse(savedEmployees));
-      } else {
-        setEmployees(MOCK_EMPLOYEES);
-        localStorage.setItem(`${LOCAL_STORAGE_PREFIX}employees`, JSON.stringify(MOCK_EMPLOYEES));
-      }
+        // 2. Employees recall
+        const savedEmployees = await fetchEmployees();
+        if (savedEmployees.length > 0) {
+          setEmployees(savedEmployees);
+        } else {
+          setEmployees(MOCK_EMPLOYEES);
+          await saveEmployees(MOCK_EMPLOYEES);
+        }
 
-      // 3. Contracts recall
-      const savedContracts = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}contracts`);
-      if (savedContracts) {
-        setContracts(JSON.parse(savedContracts));
-      } else {
-        setContracts(MOCK_CONTRACTS);
-        localStorage.setItem(`${LOCAL_STORAGE_PREFIX}contracts`, JSON.stringify(MOCK_CONTRACTS));
-      }
+        // 3. Contracts recall
+        const savedContracts = await fetchContracts();
+        if (savedContracts.length > 0) {
+          setContracts(savedContracts);
+        } else {
+          setContracts(MOCK_CONTRACTS);
+          await saveContracts(MOCK_CONTRACTS);
+        }
 
-      // 4. Attendance recall
-      const savedAttendance = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}attendance`);
-      if (savedAttendance) {
-        setAttendance(JSON.parse(savedAttendance));
-      } else {
-        const generated = generateMockAttendance();
-        setAttendance(generated);
-        localStorage.setItem(`${LOCAL_STORAGE_PREFIX}attendance`, JSON.stringify(generated));
-      }
+        // 4. Attendance recall
+        const savedAttendance = await fetchAttendance();
+        if (savedAttendance.length > 0) {
+          setAttendance(savedAttendance);
+        } else {
+          const generated = generateMockAttendance();
+          setAttendance(generated);
+          await saveAttendance(generated);
+        }
 
-      // 5. Tasks recall
-      const savedTasks = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}tasks`);
-      if (savedTasks) {
-        setTasks(JSON.parse(savedTasks));
-      } else {
-        setTasks(MOCK_TASKS);
-        localStorage.setItem(`${LOCAL_STORAGE_PREFIX}tasks`, JSON.stringify(MOCK_TASKS));
-      }
+        // 5. Tasks recall
+        const savedTasks = await fetchTasks();
+        if (savedTasks.length > 0) {
+          setTasks(savedTasks);
+        } else {
+          setTasks(MOCK_TASKS);
+          await saveTasks(MOCK_TASKS);
+        }
 
-      // 6. Payroll Processed history recall
-      const savedPayroll = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}payroll_history`);
-      if (savedPayroll) {
-        setPayrollHistory(JSON.parse(savedPayroll));
-      } else {
-        const generatedHistory = generateMockPaymentsMay();
-        setPayrollHistory(generatedHistory);
-        localStorage.setItem(`${LOCAL_STORAGE_PREFIX}payroll_history`, JSON.stringify(generatedHistory));
-      }
+        // 6. Payroll Processed history recall
+        const savedPayroll = await fetchPayroll();
+        if (savedPayroll.length > 0) {
+          setPayrollHistory(savedPayroll);
+        } else {
+          const generatedHistory = generateMockPaymentsMay();
+          setPayrollHistory(generatedHistory);
+          await savePayroll(generatedHistory);
+        }
 
-      // 7. Company settings recall
-      const savedSettings = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}company_settings`);
-      if (savedSettings) {
-        setSettings(JSON.parse(savedSettings));
+        // 7. Company settings recall
+        const savedSettings = await fetchSettings();
+        if (savedSettings) {
+          setSettings(savedSettings);
+        }
+
+        // 8. Custom Reports
+        const savedReports = await fetchReports();
+        if (savedReports.length > 0) {
+          setReports(savedReports);
+        }
+      } catch (err) {
+        console.error('Falha ao carregar os dados do Firestore:', err);
+      } finally {
+        setInitialLoadDone(true);
       }
-    } catch (err) {
-      console.error('Falha ao aceder ao LocalStorage do Navegador:', err);
-    }
+    };
+    loadData();
   }, []);
 
+  // Real-time notification subscriptions
+  useEffect(() => {
+    if (!initialLoadDone) return;
+
+    const addNotification = (title: string, message: string) => {
+      setNotifications(prev => [
+        { id: Math.random().toString(36).substring(2, 9), title, message, date: new Date(), read: false },
+        ...prev
+      ].slice(0, 50)); // Keep last 50
+    };
+
+    const unsubTasks = subscribeToTasksChanges((changes) => {
+      changes.forEach(change => {
+        if (change.type === 'added') {
+          const task = change.doc.data() as ActivityTask;
+          if (task.estado === 'Pendente') {
+            addNotification('Nova Tarefa Pendente', `Tarefa "${task.titulo}" foi criada e aguarda início.`);
+          }
+        }
+      });
+    });
+
+    const unsubContracts = subscribeToContractsChanges((changes) => {
+      changes.forEach(change => {
+        if (change.type === 'modified') {
+          // Assume modification might mean expiry update, but here we just notify
+          const contract = change.doc.data() as Contract_Doc;
+          addNotification('Atualização de Contrato', `O contrato de ${contract.tipo} foi atualizado.`);
+        }
+      });
+    });
+
+    const unsubPayroll = subscribeToPayrollChanges((changes) => {
+      changes.forEach(change => {
+        if (change.type === 'added') {
+          const payroll = change.doc.data() as PayrollProcessed;
+          addNotification('Folha Processada', `Folha de ${payroll.mes}/${payroll.ano} para o funcionário ${payroll.funcionarioId} foi processada.`);
+        }
+      });
+    });
+
+    return () => {
+      unsubTasks();
+      unsubContracts();
+      unsubPayroll();
+    };
+  }, [initialLoadDone]);
+
+  // Contract Expiration Service
+  useEffect(() => {
+    if (!initialLoadDone || contracts.length === 0) return;
+
+    // We use a ref or simple localStorage check to avoid notifying multiple times per session
+    const lastChecked = localStorage.getItem('last_contract_check');
+    const today = new Date().toISOString().split('T')[0];
+
+    if (lastChecked !== today) {
+      const msPerDay = 1000 * 60 * 60 * 24;
+      const now = new Date();
+      let sentAlerts = 0;
+
+      contracts.forEach(contract => {
+        if (contract.estado === 'Ativo' && contract.dataFim) {
+          const endDate = new Date(contract.dataFim);
+          const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / msPerDay);
+          
+          if (diffDays === 7) {
+            const emp = employees.find(e => e.id === contract.funcionarioId);
+            if (emp) {
+              setNotifications(prev => [
+                {
+                  id: Math.random().toString(36).substring(2, 9),
+                  title: 'Alerta de Expiração de Contrato',
+                  message: `[E-mail enviado para ${emp.email}] O contrato de ${emp.nome} expira em exactamente 7 dias (${contract.dataFim}).`,
+                  date: new Date(),
+                  read: false
+                },
+                ...prev
+              ]);
+              console.log(`[EMAIL SERVICE] Sending expiry alert to ${emp.email} for contract ending ${contract.dataFim}`);
+              sentAlerts++;
+            }
+          }
+        }
+      });
+      localStorage.setItem('last_contract_check', today);
+    }
+  }, [initialLoadDone, contracts, employees]);
+
   // Standard write triggers to disk
-  const saveEmployeesToStorage = (list: Employee[]) => {
+  const saveEmployeesToStorage = async (list: Employee[]) => {
     setEmployees(list);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}employees`, JSON.stringify(list));
+    await saveEmployees(list);
   };
 
-  const saveContractsToStorage = (list: Contract_Doc[]) => {
+  const saveContractsToStorage = async (list: Contract_Doc[]) => {
     setContracts(list);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}contracts`, JSON.stringify(list));
+    await saveContracts(list);
   };
 
-  const saveAttendanceToStorage = (list: AttendanceRecord[]) => {
+  const saveAttendanceToStorage = async (list: AttendanceRecord[]) => {
     setAttendance(list);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}attendance`, JSON.stringify(list));
+    await saveAttendance(list);
   };
 
-  const saveTasksToStorage = (list: ActivityTask[]) => {
+  const saveTasksToStorage = async (list: ActivityTask[]) => {
     setTasks(list);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}tasks`, JSON.stringify(list));
+    await saveTasks(list);
   };
 
-  const savePayrollToStorage = (list: PayrollProcessed[]) => {
+  const savePayrollToStorage = async (list: PayrollProcessed[]) => {
     setPayrollHistory(list);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}payroll_history`, JSON.stringify(list));
+    await savePayroll(list);
   };
 
-  const saveCompanySettingsToStorage = (data: CompanySettings) => {
+  const saveCompanySettingsToStorage = async (data: CompanySettings) => {
     setSettings(data);
-    localStorage.setItem(`${LOCAL_STORAGE_PREFIX}company_settings`, JSON.stringify(data));
+    await saveSettings(data);
+  };
+
+  const handleSaveReport = async (report: CustomReportConfig) => {
+    const newList = [...reports, report];
+    setReports(newList);
+    await saveReports(newList);
+  };
+
+  const handleDeleteReport = async (id: string) => {
+    const newList = reports.filter(r => r.id !== id);
+    setReports(newList);
+    await saveReports(newList);
   };
 
   // Login handler
-  const handleLoginSuccess = (usr: User) => {
+  const handleLoginSuccess = async (usr: User) => {
     setCurrentUser(usr);
     localStorage.setItem(`${LOCAL_STORAGE_PREFIX}session_user`, JSON.stringify(usr));
     
@@ -169,6 +334,18 @@ export default function App() {
       setActiveSection('Meu Perfil');
     } else {
       setActiveSection('Dashboard');
+    }
+
+    try {
+      const prefDoc = await getDoc(doc(db, 'userPreferences', usr.id));
+      if (prefDoc.exists()) {
+        const data = prefDoc.data();
+        if (data.isDarkMode !== undefined) {
+          setIsDarkMode(data.isDarkMode);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load user preferences", err);
     }
   };
 
@@ -288,19 +465,14 @@ export default function App() {
       copy[existingIdx] = record;
       savePayrollToStorage(copy);
     } else {
-      savePayrollToStorage([...payrollHistory, record]);
+      savePayrollToStorage([...payrollHistory, { ...record, status: record.status || 'Pendente Revisão' }]);
     }
   };
 
-  const handleMarkAsPaid = (payrollId: string, reference: string) => {
+  const handleUpdatePayroll = (payrollId: string, updates: Partial<PayrollProcessed>) => {
     const list = payrollHistory.map(p => {
       if (p.id === payrollId) {
-        return {
-          ...p,
-          pago: true,
-          dataPagamento: new Date().toISOString().split('T')[0],
-          referenciaBancaria: reference
-        };
+        return { ...p, ...updates };
       }
       return p;
     });
@@ -318,6 +490,7 @@ export default function App() {
             employees={employees}
             contracts={contracts}
             attendance={attendance}
+            tasks={tasks}
             payrollHistory={payrollHistory}
             onNavigate={setActiveSection}
             currentUserRole={currentUser.perfil}
@@ -370,7 +543,7 @@ export default function App() {
             payrollHistory={payrollHistory}
             attendance={attendance}
             onSaveProcessedPayroll={handleSaveProcessedPayroll}
-            onMarkAsPaid={handleMarkAsPaid}
+            onUpdatePayroll={handleUpdatePayroll}
             currentUserRole={currentUser.perfil}
             settings={settings}
             onPrintSlip={(rec) => {
@@ -393,6 +566,22 @@ export default function App() {
               const dummyItem = payrollHistory[0] || null;
               setPrintingPayroll(dummyItem); 
             }}
+            onPrintMultipleSlips={(payrolls) => {
+              setPrintMode('multiple_slips');
+              setPrintingPayrolls(payrolls);
+            }}
+          />
+        );
+      case 'Relatórios Dinâmicos':
+        return (
+          <CustomReportsView
+            reports={reports}
+            employees={employees}
+            contracts={contracts}
+            payroll={payrollHistory}
+            attendance={attendance}
+            onSaveReport={handleSaveReport}
+            onDeleteReport={handleDeleteReport}
           />
         );
       case 'Configurações':
@@ -409,6 +598,7 @@ export default function App() {
             employees={employees}
             contracts={contracts}
             tasks={tasks}
+            attendance={attendance}
             payrollHistory={payrollHistory}
             onUpdateEmployee={handleUpdateEmployee}
             onPrintSlip={(rec) => {
@@ -439,6 +629,7 @@ export default function App() {
     { name: 'Atividades', icon: CheckSquare, blockForEmployee: false },
     { name: 'Processamento Salarial', icon: Banknote, blockForEmployee: true },
     { name: 'Relatórios', icon: FileBarChart2, blockForEmployee: true },
+    { name: 'Relatórios Dinâmicos', icon: FileText, blockForEmployee: true },
     { name: 'Configurações', icon: Settings, blockForEmployee: true },
     { name: 'Meu Perfil', icon: UserCircle, blockForEmployee: false }
   ];
@@ -455,9 +646,7 @@ export default function App() {
         <div>
           {/* Logo Brand Header */}
           <div className="p-6 border-b border-slate-800 flex items-center space-x-3 bg-slate-950">
-            <div className="p-1.5 bg-emerald-600 text-white rounded-lg">
-              <Landmark className="w-5 h-5" />
-            </div>
+            <img src={hrpayLogo} alt="HRPay Pro Logo" className="h-8 w-auto rounded bg-white p-0.5" />
             <div>
               <h1 className="text-md font-extrabold text-white tracking-tight leading-none">HRPay Pro</h1>
               <span className="text-[10px] text-slate-400 font-medium">Mozambique Edição</span>
@@ -520,7 +709,10 @@ export default function App() {
             <div>
               {/* Header */}
               <div className="p-5 border-b border-slate-850 flex justify-between items-center bg-slate-950">
-                <span className="font-extrabold text-sm text-white">HRPay Pro</span>
+                <div className="flex items-center space-x-2">
+                  <img src={hrpayLogo} alt="HRPay Pro Logo" className="h-6 w-auto rounded bg-white p-0.5" />
+                  <span className="font-extrabold text-sm text-white">HRPay Pro</span>
+                </div>
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(false)}
@@ -575,6 +767,66 @@ export default function App() {
       {/* 3. CORE CONTENT AREA */}
       <div className="flex-1 flex flex-col min-w-0" id="main-content-scrollable">
         
+        {/* Desktop TopBar */}
+        <header className="hidden md:flex justify-end items-center px-8 py-4 bg-white/80 backdrop-blur-md border-b border-slate-100 shrink-0 sticky top-0 z-30">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 relative rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              title={isDarkMode ? "Mudar para tema claro" : "Mudar para tema escuro"}
+            >
+              {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
+            </button>
+            
+            <div className="relative">
+               <button onClick={() => setShowNotifications(!showNotifications)} className="p-2 relative rounded-full hover:bg-slate-100 transition-colors cursor-pointer">
+               <Bell className="w-5 h-5 text-slate-600" />
+               {notifications.filter(n => !n.read).length > 0 && (
+                 <span className="absolute top-1.5 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+               )}
+             </button>
+             
+             {showNotifications && (
+               <div className="absolute right-0 mt-2 w-80 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden">
+                 <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                   <h3 className="font-bold text-slate-800 text-sm">Notificações</h3>
+                   <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full">
+                     {notifications.filter(n => !n.read).length} Novas
+                   </span>
+                 </div>
+                 <div className="max-h-80 overflow-y-auto">
+                   {notifications.length === 0 ? (
+                     <div className="p-6 text-center text-xs text-slate-400 font-medium">Nenhuma notificação no momento.</div>
+                   ) : (
+                     <div className="divide-y divide-slate-50">
+                       {notifications.map(notif => (
+                         <div key={notif.id} className={`p-4 transition-colors ${notif.read ? 'bg-white' : 'bg-indigo-50/30'}`} onClick={() => {
+                           setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+                         }}>
+                           <div className="flex justify-between items-start mb-1">
+                             <h4 className={`text-xs font-bold ${notif.read ? 'text-slate-700' : 'text-indigo-900'}`}>{notif.title}</h4>
+                             <span className="text-[9px] text-slate-400 font-medium">{notif.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                           </div>
+                           <p className="text-[11px] text-slate-500 leading-relaxed">{notif.message}</p>
+                         </div>
+                       ))}
+                     </div>
+                   )}
+                 </div>
+                 <div className="p-2 border-t border-slate-50 bg-slate-50/50">
+                   <button 
+                     onClick={() => setNotifications(prev => prev.map(n => ({ ...n, read: true })))}
+                     className="w-full text-[10px] font-bold text-slate-500 hover:text-slate-800 py-1.5 transition-colors cursor-pointer"
+                   >
+                     Marcar todas como lidas
+                   </button>
+                 </div>
+               </div>
+             )}
+            </div>
+          </div>
+        </header>
+
         {/* Mobile Upper TopBar */}
         <header className="bg-white border-b border-slate-100 p-4 flex items-center justify-between md:hidden shadow-xs shrink-0 sticky top-0 z-40">
           <button
@@ -585,13 +837,57 @@ export default function App() {
             <Menu className="w-4.5 h-4.5" />
           </button>
           
-          <div className="text-center">
-            <span className="font-extrabold text-slate-800 text-sm tracking-tight block">HRPay Pro</span>
+          <div className="text-center flex flex-col items-center">
+            <img src={hrpayLogo} alt="HRPay Pro Logo" className="h-6 w-auto mb-1 rounded" />
             <span className="text-[9px] text-slate-400 block font-semibold">{activeSection}</span>
           </div>
           
-          <div className="w-9 h-9 rounded-full bg-emerald-50 text-emerald-800 font-black flex items-center justify-center text-xs">
-            {currentUser.nome[0]}
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className="p-2 relative rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
+            </button>
+            
+            <div className="relative">
+               <button onClick={() => setShowNotifications(!showNotifications)} className="p-2 relative rounded-full hover:bg-slate-100 transition-colors">
+               <Bell className="w-5 h-5 text-slate-600" />
+               {notifications.filter(n => !n.read).length > 0 && (
+                 <span className="absolute top-1.5 right-2 w-2.5 h-2.5 bg-rose-500 rounded-full border-2 border-white"></span>
+               )}
+             </button>
+             
+             {showNotifications && (
+               <div className="absolute right-0 mt-2 w-72 bg-white border border-slate-100 rounded-2xl shadow-xl z-50 overflow-hidden">
+                 <div className="p-4 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+                   <h3 className="font-bold text-slate-800 text-sm">Notificações</h3>
+                   <span className="text-[10px] bg-slate-200 text-slate-700 font-bold px-2 py-0.5 rounded-full">
+                     {notifications.filter(n => !n.read).length} Novas
+                   </span>
+                 </div>
+                 <div className="max-h-72 overflow-y-auto">
+                   {notifications.length === 0 ? (
+                     <div className="p-6 text-center text-xs text-slate-400 font-medium">Nenhuma notificação.</div>
+                   ) : (
+                     <div className="divide-y divide-slate-50">
+                       {notifications.map(notif => (
+                         <div key={notif.id} className={`p-4 ${notif.read ? 'bg-white' : 'bg-indigo-50/30'}`} onClick={() => {
+                           setNotifications(prev => prev.map(n => n.id === notif.id ? { ...n, read: true } : n));
+                         }}>
+                           <div className="flex justify-between items-start mb-1">
+                             <h4 className={`text-xs font-bold ${notif.read ? 'text-slate-700' : 'text-indigo-900'}`}>{notif.title}</h4>
+                             <span className="text-[9px] text-slate-400 font-medium">{notif.date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                           </div>
+                           <p className="text-[11px] text-slate-500 leading-relaxed">{notif.message}</p>
+                         </div>
+                       ))}
+                     </div>
+                   )}
+                 </div>
+               </div>
+             )}
+            </div>
           </div>
         </header>
 
@@ -602,13 +898,21 @@ export default function App() {
       </div>
 
       {/* 4. PRINT TEMPLATES MODAL SWITCH OVERLAY */}
-      {printingPayroll && (
+      {(printingPayroll || printMode === 'general' || (printMode === 'multiple_slips' && printingPayrolls.length > 0)) && (
         <PrintView
           payroll={printMode === 'single' ? printingPayroll : null}
-          allPayrolls={printMode === 'general' ? payrollHistory.filter(p => p.mes === 5 && p.ano === 2026) : []}
+          allPayrolls={
+            printMode === 'general' ? payrollHistory.filter(p => p.mes === 5 && p.ano === 2026) : 
+            printMode === 'multiple_slips' ? printingPayrolls : 
+            []
+          }
           employees={employees}
           settings={settings}
-          onClose={() => setPrintingPayroll(null)}
+          onClose={() => {
+            setPrintingPayroll(null);
+            setPrintingPayrolls([]);
+            setPrintMode('single');
+          }}
           printMode={printMode}
         />
       )}

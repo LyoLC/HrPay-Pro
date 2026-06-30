@@ -41,11 +41,30 @@
   --color-teal-950: #0F172A;
 }
 
+@layer base {
+  .dark {
+    /* Keep white pure for high contrast text on active backgrounds */
+    --color-white: #FFFFFF; 
+    
+    --color-slate-50: #0F172A;
+    --color-slate-100: #1E293B;
+    --color-slate-200: #334155;
+    --color-slate-300: #475569;
+    --color-slate-400: #64748B;
+    --color-slate-500: #94A3B8;
+    --color-slate-600: #CBD5E1;
+    --color-slate-700: #E2E8F0;
+    --color-slate-800: #F1F5F9;
+    --color-slate-900: #F8F9FA;
+    --color-slate-950: #FFFFFF;
+  }
+}
+
 /* Custom layout defaults & fine alignments */
 html, body {
   font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
-  background-color: #F8F9FA;
-  color: #2D3436;
+  background-color: var(--color-slate-50, #F8F9FA);
+  color: var(--color-slate-800, #2D3436);
   scroll-behavior: smooth;
 }
 

@@ -20,6 +20,15 @@ export interface User {
 
 export type ContractType = 'Contrato a prazo' | 'Contrato sem termo' | 'Prestação de serviços';
 
+export interface EmployeeDocument {
+  id: string;
+  nome: string;
+  tipo: string;
+  url: string;
+  dataUpload: string;
+  validade?: string; // YYYY-MM-DD
+}
+
 export interface Employee {
   id: string;
   nome: string;
@@ -32,9 +41,26 @@ export interface Employee {
   departamento: string;
   cargo: string;
   dataAdmissao: string;
+  dataNascimento?: string; // Optional for existing ones
   salarioBase: number; // in Meticais (MT)
   tipoContrato: ContractType;
   estado: 'Ativo' | 'Inativo';
+  documentos?: EmployeeDocument[];
+  skills?: string[];
+}
+
+export interface CustomReportConfig {
+  id: string;
+  name: string;
+  description: string;
+  dataSources: string[];
+  filters: {
+    dateRange?: { start: string; end: string };
+    department?: string;
+    employeeStatus?: 'Ativo' | 'Inativo' | 'Todos';
+  };
+  fields: string[];
+  createdAt: string;
 }
 
 export interface Contract_Doc {
@@ -61,6 +87,7 @@ export interface AttendanceRecord {
 
 export type TaskStatus = 'Pendente' | 'Em Progresso' | 'Concluída';
 export type TaskPriority = 'Baixa' | 'Média' | 'Alta';
+export type TaskCategory = 'Administrativo' | 'Salarial' | 'Recrutamento' | 'Geral';
 
 export interface ActivityTask {
   id: string;
@@ -68,10 +95,14 @@ export interface ActivityTask {
   descricao: string;
   funcionarioId: string; // assigned employee
   prazo: string; // YYYY-MM-DD
+  dueDate?: string;
   prioridade: TaskPriority;
+  categoria?: TaskCategory;
   estado: TaskStatus;
   comentarios: { autor: string; data: string; texto: string }[];
 }
+
+export type PayrollStatus = 'Pendente Revisão' | 'Aprovado' | 'Pago';
 
 export interface PayrollProcessed {
   id: string;
@@ -98,7 +129,8 @@ export interface PayrollProcessed {
   salarioLiquido: number;
   processadoPor: string;
   dataProcessamento: string;
-  pago: boolean;
+  status?: PayrollStatus;
+  pago: boolean; // keep for legacy support
   dataPagamento?: string;
   referenciaBancaria?: string;
 }
@@ -132,6 +164,7 @@ export type MenuSection =
   | 'Atividades'
   | 'Processamento Salarial'
   | 'Relatórios'
+  | 'Relatórios Dinâmicos'
   | 'Impressões'
   | 'Configurações'
   | 'Meu Perfil';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { CompanySettings, IrpsBracket } from '../types';
-import { Building2, Save, Sparkles, Scale, Info, Landmark, RefreshCcw } from 'lucide-react';
+import { Building2, Save, Sparkles, Scale, Info, Landmark, RefreshCcw, Plus, Trash2 } from 'lucide-react';
 
 interface ConfigViewProps {
   settings: CompanySettings;
@@ -28,6 +28,16 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
   const handleBracketValueChange = (index: number, key: keyof IrpsBracket, val: number) => {
     const updated = [...brackets];
     updated[index] = { ...updated[index], [key]: val };
+    setBrackets(updated);
+  };
+
+  const handleAddBracket = () => {
+    setBrackets([...brackets, { minVal: 0, maxVal: 0, taxRate: 0, deductionCoefficient: 0 }]);
+  };
+
+  const handleRemoveBracket = (index: number) => {
+    const updated = [...brackets];
+    updated.splice(index, 1);
     setBrackets(updated);
   };
 
@@ -187,6 +197,7 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
                     <th className="py-2.5 px-3">Escalão Máximo (MT)</th>
                     <th className="py-2.5 px-3">Taxa (%)</th>
                     <th className="py-2.5 px-3">Coeficiente Dedução (MT)</th>
+                    <th className="py-2.5 px-3 text-center">Acções</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-50 font-semibold text-slate-700">
@@ -230,10 +241,30 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
                           onChange={e => handleBracketValueChange(idx, 'deductionCoefficient', Number(e.target.value))}
                         />
                       </td>
+                      <td className="py-2 px-3 text-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveBracket(idx)}
+                          className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors"
+                          title="Remover Escalão"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={handleAddBracket}
+                  className="flex items-center space-x-1 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-emerald-600 font-bold px-3 py-1.5 rounded-lg text-[10px] transition-colors shadow-sm"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Adicionar Novo Escalão</span>
+                </button>
+              </div>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-xl border border-slate-100 text-[10px] text-slate-500 flex items-start space-x-2">

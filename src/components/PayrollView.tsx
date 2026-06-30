@@ -8,7 +8,7 @@ interface PayrollViewProps {
   payrollHistory: PayrollProcessed[];
   attendance: AttendanceRecord[];
   onSaveProcessedPayroll: (payroll: PayrollProcessed) => void;
-  onMarkAsPaid: (id: string, ref: string) => void;
+  onUpdatePayroll: (id: string, updates: Partial<PayrollProcessed>) => void;
   currentUserRole: UserRole;
   settings: CompanySettings;
   onPrintSlip: (payroll: PayrollProcessed) => void;
@@ -19,7 +19,7 @@ export default function PayrollView({
   payrollHistory,
   attendance,
   onSaveProcessedPayroll,
-  onMarkAsPaid,
+  onUpdatePayroll,
   currentUserRole,
   settings,
   onPrintSlip
@@ -27,6 +27,13 @@ export default function PayrollView({
   const [selectedMonth, setSelectedMonth] = useState(6); // June
   const [selectedYear, setSelectedYear] = useState(2026);
   
+  // simulation modal state
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [simBaseSalary, setSimBaseSalary] = useState(25000);
+  const [simBonus, setSimBonus] = useState(0);
+  const [simOvertime, setSimOvertime] = useState(0);
+  const [simAbsences, setSimAbsences] = useState(0);
+
   // processing drawer modal state
   const [processingEmp, setProcessingEmp] = useState<Employee | null>(null);
 
@@ -127,9 +134,19 @@ export default function PayrollView({
     }
   };
 
+  const handleApprove = (payrollId: string) => {
+    onUpdatePayroll(payrollId, { status: 'Aprovado' });
+    alert('Processamento aprovado com sucesso!');
+  };
+
   const handlePayConfirm = (payrollId: string) => {
     const ref = `BIM-${Math.floor(Math.random() * 900000) + 100000}`;
-    onMarkAsPaid(payrollId, ref);
+    onUpdatePayroll(payrollId, { 
+      status: 'Pago', 
+      pago: true, 
+      referenciaBancaria: ref, 
+      dataPagamento: new Date().toISOString().split('T')[0] 
+    });
     alert(`Sucesso! O estado do processamento foi marcado como PAGO. Referência bancária gerada: ${ref}`);
   };
 
@@ -149,25 +166,34 @@ export default function PayrollView({
         </div>
 
         {/* Month selector dropdowns */}
-        <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-100 shadow-xs shrink-0 font-bold">
-          <select
-            className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none"
-            value={selectedMonth}
-            onChange={e => setSelectedMonth(Number(e.target.value))}
+        <div className="flex items-center space-x-4 shrink-0">
+          <button
+            onClick={() => setShowSimulator(true)}
+            className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
           >
-            <option value={5}>Maio</option>
-            <option value={6}>Junho</option>
-            <option value={7}>Julho</option>
-          </select>
-          <span className="text-slate-300">|</span>
-          <select
-            className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none"
-            value={selectedYear}
-            onChange={e => setSelectedYear(Number(e.target.value))}
-          >
-            <option value={2026}>2026</option>
-            <option value={2025}>2025</option>
-          </select>
+            <Calculator className="w-4 h-4" />
+            <span>Simulador What-If</span>
+          </button>
+          <div className="flex items-center space-x-2 bg-white p-2 rounded-xl border border-slate-100 shadow-xs font-bold">
+            <select
+              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(Number(e.target.value))}
+            >
+              <option value={5}>Maio</option>
+              <option value={6}>Junho</option>
+              <option value={7}>Julho</option>
+            </select>
+            <span className="text-slate-300">|</span>
+            <select
+              className="bg-transparent border-0 text-xs font-bold text-slate-700 outline-none"
+              value={selectedYear}
+              onChange={e => setSelectedYear(Number(e.target.value))}
+            >
+              <option value={2026}>2026</option>
+              <option value={2025}>2025</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -276,19 +302,38 @@ export default function PayrollView({
 
                       <td className="py-4 px-3 text-center">
                         {pay ? (
-                          pay.pago ? (
+                          pay.status === 'Pago' || pay.pago ? (
                             <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-md text-[9px] font-extrabold inline-block">
                               PAGO ({pay.referenciaBancaria})
                             </span>
+                          ) : pay.status === 'Aprovado' ? (
+                            <div className="flex flex-col space-y-1 items-center">
+                              <span className="px-2 py-0.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-md text-[9px] font-extrabold inline-block">
+                                APROVADO
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handlePayConfirm(pay.id)}
+                                className="px-2 py-0.5 bg-emerald-600 text-white rounded-md text-[9px] font-extrabold hover:bg-emerald-700 cursor-pointer"
+                                disabled={currentUserRole === UserRole.SUPERVISOR || currentUserRole === UserRole.FUNCIONARIO}
+                              >
+                                Efetuar Pagamento
+                              </button>
+                            </div>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => handlePayConfirm(pay.id)}
-                              className="px-2 py-0.5 bg-yellow-50 text-yellow-800 border border-yellow-200 rounded-md text-[9px] font-extrabold hover:bg-yellow-100/60 inline-block cursor-pointer"
-                              disabled={currentUserRole === UserRole.SUPERVISOR || currentUserRole === UserRole.FUNCIONARIO}
-                            >
-                              Pendente / Pagar
-                            </button>
+                            <div className="flex flex-col space-y-1 items-center">
+                              <span className="px-2 py-0.5 bg-orange-50 text-orange-700 border border-orange-200 rounded-md text-[9px] font-extrabold inline-block">
+                                PENDENTE REVISÃO
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => handleApprove(pay.id)}
+                                className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[9px] font-extrabold hover:bg-indigo-700 cursor-pointer"
+                                disabled={currentUserRole !== UserRole.ADMIN && currentUserRole !== UserRole.RH}
+                              >
+                                Aprovar
+                              </button>
+                            </div>
                           )
                         ) : (
                           <span className="px-2 py-0.5 bg-slate-50 text-slate-400 border border-slate-100 rounded-md text-[9px] font-medium inline-block">
@@ -509,6 +554,109 @@ export default function PayrollView({
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Simulator Modal */}
+      {showSimulator && (
+        <div className="fixed inset-0 bg-slate-950/40 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl flex flex-col space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+              <h3 className="font-bold text-slate-800 text-md flex items-center space-x-2">
+                <Calculator className="w-5 h-5 text-emerald-600" />
+                <span>Simulador de Salário "What-If"</span>
+              </h3>
+              <button
+                type="button"
+                className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 flex items-center justify-center font-bold cursor-pointer"
+                onClick={() => setShowSimulator(false)}
+              >
+                ✕
+              </button>
+            </div>
+            
+            <div className="space-y-4 py-2">
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Salário Base (MT)</label>
+                <input
+                  type="number"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 focus:outline-none"
+                  value={simBaseSalary}
+                  onChange={e => setSimBaseSalary(Number(e.target.value))}
+                />
+              </div>
+              <div>
+                <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Bónus (MT)</label>
+                <input
+                  type="number"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 focus:outline-none"
+                  value={simBonus}
+                  onChange={e => setSimBonus(Number(e.target.value))}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Horas Extras</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 focus:outline-none"
+                    value={simOvertime}
+                    onChange={e => setSimOvertime(Number(e.target.value))}
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Faltas Injustificadas</label>
+                  <input
+                    type="number"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-sm font-bold text-slate-800 focus:outline-none"
+                    value={simAbsences}
+                    onChange={e => setSimAbsences(Number(e.target.value))}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {(() => {
+              const simResult = processFullPayroll({
+                funcionarioId: 'sim-1',
+                mes: selectedMonth,
+                ano: selectedYear,
+                salarioBase: simBaseSalary,
+                bonus: simBonus,
+                subsidioTransporte: 0,
+                subsidioAlimentacao: 0,
+                horasExtrasHoras: simOvertime,
+                comissoes: 0,
+                vales: 0,
+                faltasInjustificadas: simAbsences,
+                outrosDescontos: 0,
+                taxaInssTrabalhador: settings.taxaInssTrabalhador,
+                taxaInssPatronal: settings.taxaInssPatronal,
+                brackets: settings.irpsBrackets,
+                processadoPor: 'Simulador'
+              });
+
+              return (
+                <div className="bg-emerald-900 rounded-xl p-4 text-white space-y-2 mt-4 shadow-inner">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-emerald-300">Salário Bruto</span>
+                    <span className="font-mono">{formatMT(simResult.totalBruto)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs">
+                    <span className="text-emerald-300">Descontos (INSS + IRPS)</span>
+                    <span className="font-mono">{formatMT(simResult.impostos.inssTrabalhador + simResult.impostos.irps)}</span>
+                  </div>
+                  <div className="border-t border-emerald-700/50 pt-2 flex justify-between items-center text-sm font-bold">
+                    <span className="text-emerald-400">Líquido a Receber</span>
+                    <span className="text-lg font-black text-white font-mono bg-emerald-950 px-3 py-1 rounded-xl">
+                      {formatMT(simResult.salarioLiquido)}
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>
         </div>
       )}

@@ -1,0 +1,33 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Funcionários
+    match /employees/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Contratos
+    match /contracts/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Assiduidade
+    match /attendance/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Atividades
+    match /activities/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Processamento Salarial
+    match /payroll/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Configurações
+    match /settings/{document=**} {
+      allow read, write: if request.auth != null;
+    }
+    // Outras coleções, incluindo relatórios personalizados
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

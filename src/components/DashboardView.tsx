@@ -1,11 +1,13 @@
 import React from 'react';
-import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole } from '../types';
-import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight } from 'lucide-react';
+import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole, ActivityTask } from '../types';
+import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2 } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from 'recharts';
 
 interface DashboardViewProps {
   employees: Employee[];
   contracts: Contract_Doc[];
   attendance: AttendanceRecord[];
+  tasks: ActivityTask[];
   payrollHistory: PayrollProcessed[];
   onNavigate: (section: any) => void;
   currentUserRole: UserRole;
@@ -15,6 +17,7 @@ export default function DashboardView({
   employees,
   contracts,
   attendance,
+  tasks,
   payrollHistory,
   onNavigate,
   currentUserRole
@@ -71,6 +74,54 @@ export default function DashboardView({
   const formatMT = (val: number) => {
     return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val).replace('MZN', 'MT');
   };
+
+  // Task Status Distribution
+  const taskStatusCounts = {
+    Pendente: 0,
+    'Em Progresso': 0,
+    'Concluída': 0
+  };
+  tasks?.forEach(task => {
+    if (taskStatusCounts[task.estado] !== undefined) {
+      taskStatusCounts[task.estado]++;
+    }
+  });
+
+  const taskChartData = [
+    { name: 'Pendentes', count: taskStatusCounts['Pendente'], color: '#f43f5e' }, // rose-500
+    { name: 'Em Progresso', count: taskStatusCounts['Em Progresso'], color: '#eab308' }, // yellow-500
+    { name: 'Concluídas', count: taskStatusCounts['Concluída'], color: '#10b981' } // emerald-500
+  ];
+
+  // Upcoming Birthdays
+  const currentMonth = today.getMonth() + 1;
+  const nextMonth = currentMonth === 12 ? 1 : currentMonth + 1;
+  
+  const upcomingBirthdays = employees.filter(emp => {
+    if (!emp.dataNascimento) return false;
+    const birthDate = new Date(emp.dataNascimento);
+    const birthMonth = birthDate.getMonth() + 1;
+    return birthMonth === currentMonth || birthMonth === nextMonth;
+  }).sort((a, b) => {
+    const aMonth = new Date(a.dataNascimento).getMonth();
+    const bMonth = new Date(b.dataNascimento).getMonth();
+    if (aMonth !== bMonth) return aMonth - bMonth;
+    const aDate = new Date(a.dataNascimento).getDate();
+    const bDate = new Date(b.dataNascimento).getDate();
+    return aDate - bDate;
+  });
+
+  // Monthly Payroll Trend Data
+  const monthlyPayrollTrend = Array.from({ length: 12 }, (_, i) => {
+    const monthIndex = i + 1;
+    const monthLabel = new Date(currentYear, i, 1).toLocaleString('pt-MZ', { month: 'short' }).replace('.', '');
+    const monthPayroll = payrollHistory.filter(p => p.ano === currentYear && p.mes === monthIndex);
+    const totalMes = monthPayroll.reduce((sum, p) => sum + p.totalBruto, 0);
+    return {
+      name: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+      total: totalMes,
+    };
+  });
 
   return (
     <div className="space-y-6" id="dashboard-analitico">
@@ -319,6 +370,48 @@ export default function DashboardView({
         </div>
       </div>
 
+      {/* Payroll Trends Chart */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+          <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-indigo-700">
+            <TrendingUp className="w-4 h-4" />
+            <span>Tendência Anual de Despesas Salariais ({currentYear})</span>
+          </h3>
+          <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+            Bruto Processado
+          </span>
+        </div>
+        <div className="h-64 w-full mt-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={monthlyPayrollTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+              <YAxis 
+                tick={{ fontSize: 10, fill: '#64748b' }} 
+                axisLine={false} 
+                tickLine={false}
+                tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+              />
+              <Tooltip 
+                cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                labelStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', marginBottom: '4px' }}
+                itemStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}
+                formatter={(value: number) => [formatMT(value), 'Despesa Salarial']}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="total" 
+                stroke="#10b981" 
+                strokeWidth={3}
+                dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+                activeDot={{ r: 6, fill: '#047857', stroke: '#fff', strokeWidth: 2 }}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       {/* Critical/Attention Section (Alerts of contracts ending and task monitoring) */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         
@@ -415,6 +508,90 @@ export default function DashboardView({
             Lançar Presenças ou Horas Extras no Mapa Diário
           </button>
         </div>
+
+        {/* Box C: Upcoming Birthdays */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-indigo-700">
+              <Cake className="w-4 h-4" />
+              <span>Aniversários (Mês Atual e Próximo)</span>
+            </h3>
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+              {upcomingBirthdays.length}
+            </span>
+          </div>
+
+          {upcomingBirthdays.length === 0 ? (
+            <div className="py-6 text-center text-xs text-slate-400 font-medium">
+              Não há aniversariantes nestes meses.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {upcomingBirthdays.slice(0, 3).map(emp => {
+                const bDate = new Date(emp.dataNascimento!);
+                const formattedDate = `${bDate.getDate().toString().padStart(2, '0')}/${(bDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                return (
+                  <div key={emp.id} className="flex justify-between items-center p-3 bg-indigo-50/30 rounded-xl border border-indigo-100/50">
+                    <div className="flex items-center space-x-3">
+                      <img
+                        src={emp.foto || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100'}
+                        alt={emp.nome}
+                        className="w-10 h-10 rounded-full object-cover border border-indigo-200"
+                        referrerPolicy="no-referrer"
+                      />
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800">{emp.nome}</h4>
+                        <p className="text-[10px] text-slate-500 font-semibold">{emp.departamento}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-indigo-700 font-mono">{formattedDate}</div>
+                    </div>
+                  </div>
+                );
+              })}
+              {upcomingBirthdays.length > 3 && (
+                <div className="text-center text-[10px] text-slate-500 font-medium">
+                  + {upcomingBirthdays.length - 3} aniversariante(s)
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Box D: Task Status Distribution */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-teal-700">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Distribuição de Tarefas</span>
+            </h3>
+            <span className="text-[10px] bg-teal-50 text-teal-700 font-bold px-2 py-0.5 rounded-full">
+              {tasks?.length || 0} Total
+            </span>
+          </div>
+
+          <div className="h-48 w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={taskChartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  labelStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', marginBottom: '4px' }}
+                  itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                />
+                <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                  {taskChartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
       </div>
     </div>
   );
