@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Employee, ContractType, UserRole, MOZAMBIQUE_DEPARTMENTS } from '../types';
-import { Search, UserPlus, Eye, Edit2, CheckCircle2, XCircle, MapPin, Phone, Mail, Calendar, CreditCard, Filter, Trash2 } from 'lucide-react';
+import { Search, UserPlus, Eye, Edit2, CheckCircle2, XCircle, MapPin, Phone, Mail, Calendar, CreditCard, Filter, Trash2, Upload, ExternalLink } from 'lucide-react';
+import { uploadFileToStorage } from '../lib/firestore';
 
 interface EmployeesViewProps {
   employees: Employee[];
@@ -46,7 +47,7 @@ export default function EmployeesView({
   const [isAddingDoc, setIsAddingDoc] = useState(false);
   const [docName, setDocName] = useState('');
   const [docType, setDocType] = useState('Cópia de BI');
-  const [docUrl, setDocUrl] = useState('');
+  const [docFile, setDocFile] = useState<File | null>(null);
   const [docExpiry, setDocExpiry] = useState('');
 
   const departments = ['Todos', ...MOZAMBIQUE_DEPARTMENTS];
@@ -187,28 +188,37 @@ export default function EmployeesView({
     }
   };
 
-  const handleAddDoc = (e: React.FormEvent) => {
+  const handleAddDoc = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!detailEmployee) return;
+    if (!detailEmployee || !docFile) return;
 
-    const newDoc = {
-      id: `doc_${Date.now()}`,
-      nome: docName,
-      tipo: docType,
-      url: docUrl,
-      validade: docExpiry,
-      dataUpload: new Date().toISOString().split('T')[0]
-    };
+    try {
+      const fileName = `${Date.now()}_${docFile.name}`;
+      const path = `employee_docs/${fileName}`;
+      const downloadUrl = await uploadFileToStorage(path, docFile);
 
-    const updatedDocs = [...(detailEmployee.documentos || []), newDoc];
-    onUpdateEmployee(detailEmployee.id, { documentos: updatedDocs });
-    setDetailEmployee({ ...detailEmployee, documentos: updatedDocs });
+      const newDoc = {
+        id: `doc_${Date.now()}`,
+        nome: docName,
+        tipo: docType,
+        url: downloadUrl,
+        validade: docExpiry,
+        dataUpload: new Date().toISOString().split('T')[0]
+      };
 
-    setIsAddingDoc(false);
-    setDocName('');
-    setDocUrl('');
-    setDocExpiry('');
-    setDocType('Cópia de BI');
+      const updatedDocs = [...(detailEmployee.documentos || []), newDoc];
+      onUpdateEmployee(detailEmployee.id, { documentos: updatedDocs });
+      setDetailEmployee({ ...detailEmployee, documentos: updatedDocs });
+
+      setIsAddingDoc(false);
+      setDocName('');
+      setDocFile(null);
+      setDocExpiry('');
+      setDocType('Cópia de BI');
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao fazer upload do documento.');
+    }
   };
 
   return (
@@ -465,7 +475,13 @@ export default function EmployeesView({
                       <input type="date" placeholder="Validade" className="flex-1 text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docExpiry} onChange={e => setDocExpiry(e.target.value)} title="Data de Validade (opcional)" />
                     </div>
                     <div>
-                      <input type="url" required placeholder="URL do Ficheiro (Drive, S3, etc)" className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" value={docUrl} onChange={e => setDocUrl(e.target.value)} />
+                      <input 
+                        type="file" 
+                        required 
+                        accept="application/pdf,image/*"
+                        className="w-full text-xs p-2 rounded-lg border border-slate-200 focus:outline-none" 
+                        onChange={e => setDocFile(e.target.files?.[0] || null)} 
+                      />
                     </div>
                     <button type="submit" className="w-full bg-emerald-600 text-white font-bold text-xs py-2 rounded-lg hover:bg-emerald-700">Guardar Documento</button>
                   </form>

@@ -44,6 +44,8 @@ import {
   subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges
 } from './lib/firestore';
 
+import { sendMockEmail } from './utils/mockEmailService';
+
 const LOCAL_STORAGE_PREFIX = 'hrpay_pro_v1_';
 
 interface AppNotification {
@@ -252,26 +254,33 @@ export default function App() {
       const msPerDay = 1000 * 60 * 60 * 24;
       const now = new Date();
       let sentAlerts = 0;
+      const targetDays = [30, 15, 7];
 
       contracts.forEach(contract => {
         if (contract.estado === 'Ativo' && contract.dataFim) {
           const endDate = new Date(contract.dataFim);
           const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / msPerDay);
           
-          if (diffDays === 7) {
+          if (targetDays.includes(diffDays)) {
             const emp = employees.find(e => e.id === contract.funcionarioId);
             if (emp) {
               setNotifications(prev => [
                 {
                   id: Math.random().toString(36).substring(2, 9),
                   title: 'Alerta de Expiração de Contrato',
-                  message: `[E-mail enviado para ${emp.email}] O contrato de ${emp.nome} expira em exactamente 7 dias (${contract.dataFim}).`,
+                  message: `[E-mail enviado para ${emp.email} e RH] O contrato de ${emp.nome} expira em exactamente ${diffDays} dias (${contract.dataFim}).`,
                   date: new Date(),
                   read: false
                 },
                 ...prev
               ]);
-              console.log(`[EMAIL SERVICE] Sending expiry alert to ${emp.email} for contract ending ${contract.dataFim}`);
+              
+              sendMockEmail(
+                [emp.email, settings.emailEmpresa || 'rh@empresa.com'],
+                `Aviso Importante: Contrato expirando em ${diffDays} dias`,
+                `Olá ${emp.nome},\n\nEste é um alerta automático de que o seu contrato de trabalho (${contract.tipo}) terminará em ${diffDays} dias, no dia ${contract.dataFim}.\n\nPor favor, contacte o departamento de Recursos Humanos.\n\nAtenciosamente,\nRecursos Humanos\n${settings.nomeEmpresa}`
+              );
+
               sentAlerts++;
             }
           }
@@ -279,7 +288,7 @@ export default function App() {
       });
       localStorage.setItem('last_contract_check', today);
     }
-  }, [initialLoadDone, contracts, employees]);
+  }, [initialLoadDone, contracts, employees, settings]);
 
   // Standard write triggers to disk
   const saveEmployeesToStorage = async (list: Employee[]) => {

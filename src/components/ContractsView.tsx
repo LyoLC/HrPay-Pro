@@ -3,6 +3,8 @@ import { Employee, Contract_Doc, ContractType, UserRole, MOZAMBIQUE_DEPARTMENTS 
 import { FileText, Plus, AlertTriangle, Calendar, ToggleLeft, ToggleRight, Check, CheckCircle2, RefreshCw, Upload, Download, Printer } from 'lucide-react';
 import jsPDF from 'jspdf';
 
+import { uploadFileToStorage } from '../lib/firestore';
+
 interface ContractsViewProps {
   contracts: Contract_Doc[];
   employees: Employee[];
@@ -82,10 +84,19 @@ export default function ContractsView({
     onUpdateContract(id, { alertasVencimento: !current });
   };
 
-  const handleSimulatedUpload = (empId: string, fileName: string) => {
-    onUpdateContract(empId, { arquivoPdf: fileName });
-    setUploadingEmpId(null);
-    alert(`Doc Digital carregado com sucesso: "${fileName}" anexado ao histórico de compliance.`);
+  const handleFileUpload = async (empId: string, file: File) => {
+    try {
+      const fileName = `${Date.now()}_${file.name}`;
+      const path = `contracts/${fileName}`;
+      const downloadUrl = await uploadFileToStorage(path, file);
+      
+      onUpdateContract(empId, { arquivoPdf: downloadUrl });
+      setUploadingEmpId(null);
+      alert(`Doc Digital carregado com sucesso!`);
+    } catch (err) {
+      console.error(err);
+      alert('Erro ao fazer upload do arquivo.');
+    }
   };
 
   // Format currency
@@ -349,7 +360,13 @@ export default function ContractsView({
                               <div className="text-[9px]">
                                 <p className="font-bold text-slate-700 truncate max-w-[130px]">{c.arquivoPdf}</p>
                                 <button
-                                  onClick={() => alert(`A descarregar arquivo emulado: ${c.arquivoPdf}`)}
+                                  onClick={() => {
+                                    if (c.arquivoPdf.startsWith('http')) {
+                                      window.open(c.arquivoPdf, '_blank');
+                                    } else {
+                                      alert(`Arquivo emulado: ${c.arquivoPdf}`);
+                                    }
+                                  }}
                                   className="text-emerald-600 hover:underline flex items-center font-bold"
                                 >
                                   <Download className="w-3 h-3 mr-0.5" />
@@ -414,15 +431,19 @@ export default function ContractsView({
                 e.preventDefault();
                 setIsDragging(false);
                 const file = e.dataTransfer.files[0];
-                if (file) handleSimulatedUpload(uploadingEmpId, file.name);
+                if (file && uploadingEmpId) handleFileUpload(uploadingEmpId, file);
               }}
-              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer ${isDragging ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100/50'}`}
-              onClick={() => {
-                const mockFiles = ['Contrato_Assinado_2026.pdf', 'Minuta_Geral_RH.pdf', 'Contrato_Moçambique_Oficial.pdf'];
-                const sel = mockFiles[Math.floor(Math.random() * mockFiles.length)];
-                handleSimulatedUpload(uploadingEmpId, sel);
-              }}
+              className={`border-2 border-dashed rounded-xl p-8 text-center transition-all cursor-pointer relative ${isDragging ? 'border-emerald-500 bg-emerald-50' : 'border-slate-200 bg-slate-50 hover:bg-slate-100/50'}`}
             >
+              <input 
+                type="file" 
+                accept="application/pdf"
+                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file && uploadingEmpId) handleFileUpload(uploadingEmpId, file);
+                }}
+              />
               <Upload className="w-10 h-10 text-slate-400 mx-auto block mb-2" />
               <p className="text-xs font-bold text-slate-600">Arraste e solte o arquivo PDF aqui</p>
               <p className="text-[10px] text-slate-400 mt-1 font-medium">Ou clique para selecionar um arquivo do seu computador</p>
