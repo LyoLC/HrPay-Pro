@@ -1,11 +1,13 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, onAuthStateChanged, User, signInWithPopup } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { getFirestore } from 'firebase/firestore';
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+}, firebaseConfig.firestoreDatabaseId);
 
 export const googleAuthProvider = new GoogleAuthProvider();
 // Add all requested scopes for Gmail:

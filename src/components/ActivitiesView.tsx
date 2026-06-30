@@ -26,7 +26,7 @@ export default function ActivitiesView({
   const [formDesc, setFormDesc] = useState('');
   const [formEmpId, setFormEmpId] = useState('');
   const [formPrazo, setFormPrazo] = useState('');
-  const [formPriority, setFormPriority] = useState<TaskPriority>('Média');
+  const [formPriority, setFormPriority] = useState<TaskPriority>('Medium');
   const [formCategory, setFormCategory] = useState<ActivityTask['categoria']>('Geral');
 
   // Comment state
@@ -55,7 +55,7 @@ export default function ActivitiesView({
       funcionarioId: formEmpId,
       prazo: formPrazo || new Date().toISOString().split('T')[0],
       dueDate: formPrazo || new Date().toISOString().split('T')[0],
-      prioridade: formPriority,
+      priority: formPriority,
       categoria: formCategory,
       estado: 'Pendente',
       comentarios: []
@@ -106,8 +106,8 @@ export default function ActivitiesView({
   const completionPercentage = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   const getPriorityColor = (prio: TaskPriority) => {
-    if (prio === 'Alta') return 'bg-rose-50 text-rose-700 border-rose-200';
-    if (prio === 'Média') return 'bg-amber-50 text-amber-700 border-amber-200';
+    if (prio === 'High') return 'bg-rose-50 text-rose-700 border-rose-200';
+    if (prio === 'Medium') return 'bg-amber-50 text-amber-700 border-amber-200';
     return 'bg-slate-50 text-slate-700 border-slate-200';
   };
 
@@ -344,9 +344,9 @@ export default function ActivitiesView({
                     value={formPriority}
                     onChange={e => setFormPriority(e.target.value as TaskPriority)}
                   >
-                    <option value="Baixa">Baixa</option>
-                    <option value="Média">Média</option>
-                    <option value="Alta">Alta</option>
+                    <option value="Low">Baixa (Low)</option>
+                    <option value="Medium">Média (Medium)</option>
+                    <option value="High">Alta (High)</option>
                   </select>
                 </div>
 
@@ -407,8 +407,8 @@ export default function ActivitiesView({
               {/* Title & Priority */}
               <div className="space-y-2">
                 <div className="flex items-center space-x-2">
-                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded border ${getPriorityColor(selectedTaskDetails.prioridade)}`}>
-                    Prioridade {selectedTaskDetails.prioridade}
+                  <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded border ${getPriorityColor(selectedTaskDetails.priority)}`}>
+                    Prioridade {selectedTaskDetails.priority === 'High' ? 'Alta' : selectedTaskDetails.priority === 'Medium' ? 'Média' : 'Baixa'}
                   </span>
                   {selectedTaskDetails.categoria && (
                     <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded border bg-indigo-50 text-indigo-700 border-indigo-200">
@@ -582,8 +582,8 @@ function TaskTile({
     >
       <div className="flex justify-between items-start">
         <div className="flex space-x-1">
-          <span className={`px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border ${getPriorityColor(task.prioridade)}`}>
-            {task.prioridade}
+          <span className={`px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border ${getPriorityColor(task.priority)}`}>
+            {task.priority === 'High' ? 'Alta' : task.priority === 'Medium' ? 'Média' : 'Baixa'}
           </span>
           {task.categoria && (
             <span className="px-2 py-0.5 text-[8px] font-extrabold uppercase rounded tracking-wider border bg-indigo-50 text-indigo-700 border-indigo-200">

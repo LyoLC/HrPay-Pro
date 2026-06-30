@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Employee, Contract_Doc, ContractType, UserRole } from '../types';
-import { FileText, Plus, AlertTriangle, Calendar, ToggleLeft, ToggleRight, Check, CheckCircle2, RefreshCw, Upload, Download } from 'lucide-react';
+import { Employee, Contract_Doc, ContractType, UserRole, MOZAMBIQUE_DEPARTMENTS } from '../types';
+import { FileText, Plus, AlertTriangle, Calendar, ToggleLeft, ToggleRight, Check, CheckCircle2, RefreshCw, Upload, Download, Printer } from 'lucide-react';
+import jsPDF from 'jspdf';
 
 interface ContractsViewProps {
   contracts: Contract_Doc[];
@@ -23,6 +24,7 @@ export default function ContractsView({
 
   // Form states
   const [formEmpId, setFormEmpId] = useState('');
+  const [formDepartamento, setFormDepartamento] = useState(MOZAMBIQUE_DEPARTMENTS[0]);
   const [formTipo, setFormTipo] = useState<ContractType>('Contrato a prazo');
   const [formStart, setFormStart] = useState('');
   const [formEnd, setFormEnd] = useState('');
@@ -52,6 +54,7 @@ export default function ContractsView({
     const newContract: Contract_Doc = {
       id: `ct_${Date.now()}`,
       funcionarioId: formEmpId,
+      departamento: formDepartamento,
       tipo: formTipo,
       dataInicio: formStart,
       dataFim: formTipo === 'Contrato sem termo' ? undefined : formEnd,
@@ -90,6 +93,85 @@ export default function ContractsView({
     return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val).replace('MZN', 'MT');
   };
 
+  const generateContractPDF = (contract: Contract_Doc, emp: Employee) => {
+    const doc = new jsPDF();
+    const margin = 20;
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = 20;
+
+    const addText = (text: string, isBold: boolean = false, size: number = 11, align: 'left' | 'center' = 'left') => {
+      doc.setFont("helvetica", isBold ? "bold" : "normal");
+      doc.setFontSize(size);
+      
+      const splitText = doc.splitTextToSize(text, pageWidth - margin * 2);
+      
+      if (align === 'center') {
+        const xOffset = (pageWidth - doc.getTextWidth(splitText[0])) / 2;
+        doc.text(splitText, xOffset, y);
+      } else {
+        doc.text(splitText, margin, y);
+      }
+      
+      y += (splitText.length * size * 0.4) + 5;
+      
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
+    };
+
+    addText("CONTRATO DE TRABALHO", true, 16, 'center');
+    y += 10;
+    
+    addText("ENTRE:");
+    addText("1. [Nome da Empresa], com sede em [Endereço da Empresa], Maputo, matriculada na Conservatória do Registo Comercial sob o número [Número], com o NUIT [NUIT da Empresa], doravante designada por PRIMEIRO OUTORGANTE ou EMPREGADORA; e", false, 11);
+    addText(`2. ${emp.nome}, portador(a) do BI n.º ${emp.bi || '________'}, residente em ${emp.morada || '________________'}, com o NUIT ${emp.nuit}, doravante designado(a) por SEGUNDO OUTORGANTE ou TRABALHADOR(A).`, false, 11);
+    
+    y += 5;
+    addText("Considerando que:", true);
+    addText("Nos termos da Lei n.º 13/2023, de 25 de Agosto (Lei do Trabalho de Moçambique), é celebrado o presente Contrato de Trabalho que se rege pelas cláusulas seguintes:");
+    
+    y += 5;
+    addText("Cláusula 1ª (Categoria Profissional e Funções)", true);
+    addText(`O SEGUNDO OUTORGANTE é contratado para exercer as funções de ${emp.cargo} inserido no departamento de ${emp.departamento}.`);
+
+    y += 5;
+    addText("Cláusula 2ª (Local de Trabalho)", true);
+    addText("O local de trabalho será nas instalações do PRIMEIRO OUTORGANTE, sem prejuízo de deslocações que se revelem necessárias no âmbito das funções desempenhadas.");
+
+    y += 5;
+    addText("Cláusula 3ª (Duração)", true);
+    if (contract.tipo === 'Contrato sem termo') {
+      addText(`O presente contrato é celebrado sem termo, tendo o seu início a ${contract.dataInicio}.`);
+    } else {
+      addText(`O presente contrato é celebrado a termo certo, com início a ${contract.dataInicio} e termo a ${contract.dataFim}.`);
+    }
+
+    y += 5;
+    addText("Cláusula 4ª (Remuneração)", true);
+    addText(`O PRIMEIRO OUTORGANTE pagará ao SEGUNDO OUTORGANTE a remuneração mensal ilíquida de ${formatMT(contract.salarioBase)}, sujeita aos descontos legais aplicáveis (IRPS e INSS).`);
+
+    y += 5;
+    addText("Cláusula 5ª (Horário de Trabalho)", true);
+    addText("O horário de trabalho será de 40 horas semanais, distribuídas conforme as necessidades do PRIMEIRO OUTORGANTE, no estrito cumprimento da Lei do Trabalho vigente.");
+    
+    y += 5;
+    addText("Cláusula 6ª (Direitos e Deveres)", true);
+    addText("Em tudo o que for omisso no presente contrato, aplicar-se-ão as disposições da Lei do Trabalho (Lei n.º 13/2023) e demais legislação em vigor em Moçambique.");
+
+    y += 15;
+    addText("Maputo, " + new Date().toLocaleDateString('pt-MZ'), false, 11, 'center');
+    y += 15;
+    
+    addText("___________________________________________________");
+    addText("PRIMEIRO OUTORGANTE", true);
+    y += 10;
+    addText("___________________________________________________");
+    addText("SEGUNDO OUTORGANTE", true);
+
+    doc.save(`Contrato_${emp.nome.replace(/\s+/g, '_')}.pdf`);
+  };
+
   return (
     <div className="space-y-6" id="contracts-layout-container">
       {/* Upper header metrics */}
@@ -107,6 +189,7 @@ export default function ContractsView({
                 return;
               }
               setFormEmpId(activeEmployees[0].id);
+              setFormDepartamento(activeEmployees[0].departamento || MOZAMBIQUE_DEPARTMENTS[0]);
               setFormStart(new Date().toISOString().split('T')[0]);
               setFormEnd(new Date(Date.now() + 365*24*60*60*1000).toISOString().split('T')[0]); // +1 year
               setFormSalario(activeEmployees[0].salarioBase);
@@ -257,31 +340,42 @@ export default function ContractsView({
                       </td>
 
                       <td className="py-4 px-3">
-                        {c.arquivoPdf ? (
-                          <div className="flex items-center space-x-2">
-                            <span className="p-1 bg-rose-50 text-rose-700 rounded border border-rose-100">
-                              <FileText className="w-4 h-4" />
-                            </span>
-                            <div className="text-[9px]">
-                              <p className="font-bold text-slate-700 truncate max-w-[130px]">{c.arquivoPdf}</p>
-                              <button
-                                onClick={() => alert(`A descarregar arquivo emulado: ${c.arquivoPdf}`)}
-                                className="text-emerald-600 hover:underline flex items-center font-bold"
-                              >
-                                <Download className="w-3 h-3 mr-0.5" />
-                                <span>Baixar</span>
-                              </button>
+                        <div className="flex flex-col space-y-2">
+                          {c.arquivoPdf ? (
+                            <div className="flex items-center space-x-2">
+                              <span className="p-1 bg-rose-50 text-rose-700 rounded border border-rose-100">
+                                <FileText className="w-4 h-4" />
+                              </span>
+                              <div className="text-[9px]">
+                                <p className="font-bold text-slate-700 truncate max-w-[130px]">{c.arquivoPdf}</p>
+                                <button
+                                  onClick={() => alert(`A descarregar arquivo emulado: ${c.arquivoPdf}`)}
+                                  className="text-emerald-600 hover:underline flex items-center font-bold"
+                                >
+                                  <Download className="w-3 h-3 mr-0.5" />
+                                  <span>Baixar Anexo</span>
+                                </button>
+                              </div>
                             </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setUploadingEmpId(c.id)}
-                            className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 flex items-center space-x-1 cursor-pointer"
-                          >
-                            <Upload className="w-3.5 h-3.5 text-slate-400" />
-                            <span>Anexar PDF</span>
-                          </button>
-                        )}
+                          ) : (
+                            <button
+                              onClick={() => setUploadingEmpId(c.id)}
+                              className="bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded px-2 py-1 text-[10px] font-bold text-slate-600 flex items-center space-x-1 cursor-pointer w-max"
+                            >
+                              <Upload className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Anexar Assinado</span>
+                            </button>
+                          )}
+                          {emp && (
+                            <button
+                              onClick={() => generateContractPDF(c, emp)}
+                              className="bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded px-2 py-1 text-[10px] font-bold text-indigo-700 flex items-center space-x-1 cursor-pointer w-max"
+                            >
+                              <Printer className="w-3.5 h-3.5 text-indigo-500" />
+                              <span>Gerar Minuta PDF</span>
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       <td className="py-4 px-3 text-right">
@@ -371,11 +465,29 @@ export default function ContractsView({
                   onChange={e => {
                     setFormEmpId(e.target.value);
                     const emp = employees.find(x => x.id === e.target.value);
-                    if (emp) setFormSalario(emp.salarioBase);
+                    if (emp) {
+                      setFormSalario(emp.salarioBase);
+                      setFormDepartamento(emp.departamento || MOZAMBIQUE_DEPARTMENTS[0]);
+                    }
                   }}
                 >
                   {activeEmployees.map(e => (
                     <option key={e.id} value={e.id}>{e.nome} - {e.cargo}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Departamento */}
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Departamento *</label>
+                <select
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs text-slate-800 focus:outline-none focus:border-emerald-500"
+                  value={formDepartamento}
+                  onChange={e => setFormDepartamento(e.target.value)}
+                >
+                  {MOZAMBIQUE_DEPARTMENTS.map(dept => (
+                    <option key={dept} value={dept}>{dept}</option>
                   ))}
                 </select>
               </div>

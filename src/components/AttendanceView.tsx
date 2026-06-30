@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Employee, AttendanceRecord, UserRole } from '../types';
-import { Calendar, CheckCircle, Clock, XCircle, AlertCircle, Plus, Sparkles, Filter, ChevronRight } from 'lucide-react';
+import { Calendar, CheckCircle, Clock, XCircle, AlertCircle, Plus, Sparkles, Filter, ChevronRight, Download } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 interface AttendanceViewProps {
   attendance: AttendanceRecord[];
@@ -134,6 +136,39 @@ export default function AttendanceView({
     document.body.removeChild(link);
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    const monthlyRecords = attendance.filter(a => {
+      const [y, m] = a.data.split('-');
+      return parseInt(y) === selectedYear && parseInt(m) === selectedMonth;
+    });
+
+    const tableData = monthlyRecords.map(r => {
+      const emp = employees.find(e => e.id === r.funcionarioId);
+      const empName = emp ? emp.nome : 'Desconhecido';
+      return [
+        r.data,
+        empName,
+        r.presente,
+        r.horasExtras.toString(),
+        r.comentario || ''
+      ];
+    });
+
+    doc.setFontSize(16);
+    doc.text(`Relatório de Assiduidade - ${selectedMonth.toString().padStart(2, '0')}/${selectedYear}`, 14, 15);
+    
+    autoTable(doc, {
+      head: [['Data', 'Funcionário', 'Estado', 'Horas Extras', 'Comentário']],
+      body: tableData,
+      startY: 25,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [16, 185, 129] } // emerald-500
+    });
+
+    doc.save(`Assiduidade_${selectedMonth.toString().padStart(2, '0')}_${selectedYear}.pdf`);
+  };
+
   return (
     <div className="space-y-6" id="attendance-section-grid">
       {/* Upper description */}
@@ -142,12 +177,22 @@ export default function AttendanceView({
           <h2 className="text-xl font-bold text-slate-800">Mapa de Assiduidade e Presenças</h2>
           <p className="text-xs text-slate-500 font-medium">Controlo diário de assiduidade, justificação de faltas administrativas e horas extraordinárias acumuladas</p>
         </div>
-        <button
-          onClick={handleExportCSV}
-          className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
-        >
-          <span>Exportar Relatório Mensal (CSV)</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>CSV</span>
+          </button>
+          <button
+            onClick={handleExportPDF}
+            className="bg-indigo-100 text-indigo-800 hover:bg-indigo-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>PDF</span>
+          </button>
+        </div>
       </div>
 
       {/* Primary Layout Split: Calendar & Register Table + Side Summary Card */}

@@ -379,8 +379,8 @@ export default function ProfileView({
                       </div>
 
                       <div className="flex items-center space-x-3" onClick={e => e.stopPropagation()}>
-                        <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${tsk.prioridade === 'Alta' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {tsk.prioridade}
+                        <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded ${tsk.priority === 'High' ? 'bg-rose-50 text-rose-700' : 'bg-slate-100 text-slate-600'}`}>
+                          {tsk.priority === 'High' ? 'Alta' : tsk.priority === 'Medium' ? 'Média' : 'Baixa'}
                         </span>
 
                         <select

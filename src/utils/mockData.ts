@@ -240,7 +240,7 @@ export const MOCK_TASKS: ActivityTask[] = [
     descricao: 'Criar o layout CSS de alta precisão para a impressão direta do recibo de pagamento no formato A4/A5.',
     funcionarioId: 'emp_1', // Abel
     prazo: '2026-06-25',
-    prioridade: 'Alta',
+    priority: 'High',
     estado: 'Em Progresso',
     comentarios: [
       { autor: 'Clara Nhantumbo (RH)', data: '2026-06-18', texto: 'Abel, garanta que todas as deduções de INSS fiquem bem claras.' },
@@ -253,7 +253,7 @@ export const MOCK_TASKS: ActivityTask[] = [
     descricao: 'Emitir avisos e marcar reuniões com funcionários cujos contratos terminam em Julho (como o Abel Chilundo).',
     funcionarioId: 'emp_2', // Anabela
     prazo: '2026-06-22',
-    prioridade: 'Alta',
+    priority: 'High',
     estado: 'Pendente',
     comentarios: []
   },
@@ -263,7 +263,7 @@ export const MOCK_TASKS: ActivityTask[] = [
     descricao: 'Ajustar horários devido ao aumento do fluxo de entrada de insumos no próximo trimestre.',
     funcionarioId: 'emp_3', // Gervásio
     prazo: '2026-06-28',
-    prioridade: 'Média',
+    priority: 'Medium',
     estado: 'Concluída',
     comentarios: [
       { autor: 'Tomás Mandlate (Supervisor)', data: '2026-06-15', texto: 'Muito bom trabalho na distribuição das rotas e otimização da equipa.' }
@@ -275,7 +275,7 @@ export const MOCK_TASKS: ActivityTask[] = [
     descricao: 'Reunião de conselho de administração para definir novas contratações previstas na área de engenharia.',
     funcionarioId: 'emp_4', // Mariana
     prazo: '2026-06-30',
-    prioridade: 'Alta',
+    priority: 'High',
     estado: 'Em Progresso',
     comentarios: []
   },
@@ -285,7 +285,7 @@ export const MOCK_TASKS: ActivityTask[] = [
     descricao: 'Migrar as chaves de geração do token para utilizar a biblioteca encriptada.',
     funcionarioId: 'emp_5', // Pedro
     prazo: '2026-06-24',
-    prioridade: 'Baixa',
+    priority: 'Low',
     estado: 'Pendente',
     comentarios: []
   }

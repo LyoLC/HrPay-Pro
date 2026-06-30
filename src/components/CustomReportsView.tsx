@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CustomReportConfig, Employee, Contract_Doc, PayrollProcessed, AttendanceRecord } from '../types';
+import { CustomReportConfig, Employee, Contract_Doc, PayrollProcessed, AttendanceRecord, MOZAMBIQUE_DEPARTMENTS } from '../types';
 import { Save, Download, FileText, Filter, Printer, Trash2, ChevronDown, ChevronRight, CheckSquare, Square } from 'lucide-react';
 
 interface CustomReportsViewProps {
@@ -288,11 +288,9 @@ export default function CustomReportsView({
               <label className="text-xs font-semibold text-slate-600 block mb-1">Filtros de Registos</label>
               <select className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none" value={filterDept} onChange={e => setFilterDept(e.target.value)}>
                 <option value="Todos">Todos os Departamentos</option>
-                <option value="Engenharia de Software">Engenharia de Software</option>
-                <option value="Recursos Humanos">Recursos Humanos</option>
-                <option value="Logística">Logística</option>
-                <option value="Administração">Administração</option>
-                <option value="Financeiro">Financeiro</option>
+                {MOZAMBIQUE_DEPARTMENTS.map(dept => (
+                  <option key={dept} value={dept}>{dept}</option>
+                ))}
               </select>
 
               <select className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none" value={filterStatus} onChange={e => setFilterStatus(e.target.value as any)}>

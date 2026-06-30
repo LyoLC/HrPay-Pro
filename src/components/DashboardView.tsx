@@ -82,7 +82,7 @@ export default function DashboardView({
       funcionarioId: taskAssignee,
       estado: 'Pendente',
       prazo: taskDeadline,
-      prioridade: 'Média',
+      priority: 'Medium',
       categoria: 'Geral',
       comentarios: []
     });
@@ -167,6 +167,9 @@ export default function DashboardView({
     return aDate - bDate;
   });
 
+  // Pending Payroll Approvals (status is 'Pendente Revisão' or missing/falsy pago without 'Aprovado'/'Pago')
+  const pendingPayrollApprovals = payrollHistory.filter(p => p.status === 'Pendente Revisão' || (!p.status && !p.pago)).length;
+
   // Monthly Payroll Trend Data
   const monthlyPayrollTrend = Array.from({ length: 12 }, (_, i) => {
     const monthIndex = i + 1;
@@ -204,6 +207,48 @@ export default function DashboardView({
               <CreditCard className="w-4 h-4 text-emerald-600" />
               <span>Processar Folha Salarial</span>
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Quick Summary Cards (Headcount, Pending Payroll, Expiries) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+          <div className="space-y-1">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Headcount</p>
+            <div className="flex items-baseline space-x-2">
+              <p className="text-3xl font-black text-slate-800">{totalEmployees}</p>
+              <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Ativos</span>
+            </div>
+          </div>
+          <div className="w-14 h-14 rounded-full bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-600">
+            <Users className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+          <div className="space-y-1">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Pending Payroll Approvals</p>
+            <div className="flex items-baseline space-x-2">
+              <p className="text-3xl font-black text-slate-800">{pendingPayrollApprovals}</p>
+              <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">Aguardando</span>
+            </div>
+          </div>
+          <div className="w-14 h-14 rounded-full bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
+            <CreditCard className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+          <div className="space-y-1">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Upcoming Expiries</p>
+            <div className="flex items-baseline space-x-2">
+              <p className="text-3xl font-black text-slate-800">{expiringContracts.length}</p>
+              <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Este mês</span>
+            </div>
+          </div>
+          <div className="w-14 h-14 rounded-full bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+            <AlertTriangle className="w-6 h-6" />
           </div>
         </div>
       </div>

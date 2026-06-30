@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Employee, ContractType, UserRole } from '../types';
+import { Employee, ContractType, UserRole, MOZAMBIQUE_DEPARTMENTS } from '../types';
 import { Search, UserPlus, Eye, Edit2, CheckCircle2, XCircle, MapPin, Phone, Mail, Calendar, CreditCard, Filter, Trash2 } from 'lucide-react';
 
 interface EmployeesViewProps {
@@ -32,7 +32,7 @@ export default function EmployeesView({
   const [formContacto, setFormContacto] = useState('');
   const [formEmail, setFormEmail] = useState('');
   const [formMorada, setFormMorada] = useState('');
-  const [formDepartamento, setFormDepartamento] = useState('Engenharia de Software');
+  const [formDepartamento, setFormDepartamento] = useState(MOZAMBIQUE_DEPARTMENTS[0]);
   const [formCargo, setFormCargo] = useState('');
   const [formDataAdmissao, setFormDataAdmissao] = useState('');
   const [formSalarioBase, setFormSalarioBase] = useState(15000);
@@ -49,7 +49,7 @@ export default function EmployeesView({
   const [docUrl, setDocUrl] = useState('');
   const [docExpiry, setDocExpiry] = useState('');
 
-  const departments = ['Todos', 'Engenharia de Software', 'Recursos Humanos', 'Logística', 'Administração', 'Financeiro'];
+  const departments = ['Todos', ...MOZAMBIQUE_DEPARTMENTS];
 
   // Filter processes
   const filteredEmployees = employees.filter(emp => {
@@ -71,7 +71,7 @@ export default function EmployeesView({
     setFormContacto('');
     setFormEmail('');
     setFormMorada('');
-    setFormDepartamento('Engenharia de Software');
+    setFormDepartamento(MOZAMBIQUE_DEPARTMENTS[0]);
     setFormCargo('');
     setFormDataAdmissao(new Date().toISOString().split('T')[0]);
     setFormSalarioBase(20000);
@@ -633,11 +633,9 @@ export default function EmployeesView({
                     value={formDepartamento}
                     onChange={e => setFormDepartamento(e.target.value)}
                   >
-                    <option value="Engenharia de Software">Engenharia de Software</option>
-                    <option value="Recursos Humanos">Recursos Humanos</option>
-                    <option value="Logística">Logística</option>
-                    <option value="Administração">Administração</option>
-                    <option value="Financeiro">Financeiro</option>
+                    {MOZAMBIQUE_DEPARTMENTS.map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
                   </select>
                 </div>
 

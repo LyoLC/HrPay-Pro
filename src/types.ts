@@ -63,9 +63,29 @@ export interface CustomReportConfig {
   createdAt: string;
 }
 
+export const MOZAMBIQUE_DEPARTMENTS = [
+  'Administração',
+  'Operações',
+  'Recursos Humanos',
+  'Vendas',
+  'Comercial',
+  'Logística',
+  'Jurídico',
+  'Financeiro',
+  'IT / Tecnologias de Informação',
+  'Marketing',
+  'Produção',
+  'Atendimento ao Cliente',
+  'Manutenção',
+  'Engenharia de Software',
+  'Qualidade e Segurança',
+  'Compras e Aquisições'
+];
+
 export interface Contract_Doc {
   id: string;
   funcionarioId: string;
+  departamento?: string;
   tipo: ContractType;
   dataInicio: string;
   dataFim?: string; // undefined means unlimited
@@ -86,7 +106,7 @@ export interface AttendanceRecord {
 }
 
 export type TaskStatus = 'Pendente' | 'Em Progresso' | 'Concluída';
-export type TaskPriority = 'Baixa' | 'Média' | 'Alta';
+export type TaskPriority = 'Low' | 'Medium' | 'High';
 export type TaskCategory = 'Administrativo' | 'Salarial' | 'Recrutamento' | 'Geral';
 
 export interface ActivityTask {
@@ -96,7 +116,7 @@ export interface ActivityTask {
   funcionarioId: string; // assigned employee
   prazo: string; // YYYY-MM-DD
   dueDate?: string;
-  prioridade: TaskPriority;
+  priority: TaskPriority;
   categoria?: TaskCategory;
   estado: TaskStatus;
   comentarios: { autor: string; data: string; texto: string }[];
