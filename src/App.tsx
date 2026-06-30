@@ -494,6 +494,8 @@ export default function App() {
             payrollHistory={payrollHistory}
             onNavigate={setActiveSection}
             currentUserRole={currentUser.perfil}
+            onAddTask={handleAddTask}
+            onAddAttendanceRecord={handleAddAttendanceRecord}
           />
         );
       case 'Funcionários':

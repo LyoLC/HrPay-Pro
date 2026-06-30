@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole, ActivityTask } from '../types';
-import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2 } from 'lucide-react';
+import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2, Plus, X, ClipboardList, Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from 'recharts';
 
 interface DashboardViewProps {
@@ -11,6 +11,8 @@ interface DashboardViewProps {
   payrollHistory: PayrollProcessed[];
   onNavigate: (section: any) => void;
   currentUserRole: UserRole;
+  onAddTask?: (task: ActivityTask) => void;
+  onAddAttendanceRecord?: (record: AttendanceRecord) => void;
 }
 
 export default function DashboardView({
@@ -20,7 +22,9 @@ export default function DashboardView({
   tasks,
   payrollHistory,
   onNavigate,
-  currentUserRole
+  currentUserRole,
+  onAddTask,
+  onAddAttendanceRecord
 }: DashboardViewProps) {
   // Calculators
   const totalEmployees = employees.length;
@@ -52,6 +56,58 @@ export default function DashboardView({
   const attendanceRate = totalAttendanceEntries > 0 
     ? Math.round((presentsAndDelays / totalAttendanceEntries) * 100) 
     : 92; // fallback
+
+  // Quick Create State
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
+  const [quickCreateModal, setQuickCreateModal] = useState<'task' | 'attendance' | null>(null);
+
+  // Form states for Quick Task
+  const [taskTitle, setTaskTitle] = useState('');
+  const [taskDesc, setTaskDesc] = useState('');
+  const [taskAssignee, setTaskAssignee] = useState('');
+  const [taskDeadline, setTaskDeadline] = useState('');
+
+  // Form states for Quick Attendance
+  const [attEmp, setAttEmp] = useState('');
+  const [attDate, setAttDate] = useState(new Date().toISOString().split('T')[0]);
+  const [attStatus, setAttStatus] = useState<'Presente' | 'Falta Justificada' | 'Falta Injustificada' | 'Atraso'>('Presente');
+
+  const handleQuickCreateTask = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddTask) return;
+    onAddTask({
+      id: `tsk_${Date.now()}`,
+      titulo: taskTitle,
+      descricao: taskDesc,
+      funcionarioId: taskAssignee,
+      estado: 'Pendente',
+      prazo: taskDeadline,
+      prioridade: 'Média',
+      categoria: 'Geral',
+      comentarios: []
+    });
+    setQuickCreateModal(null);
+    setTaskTitle('');
+    setTaskDesc('');
+    setTaskAssignee('');
+    setTaskDeadline('');
+    alert('Tarefa rápida criada com sucesso!');
+  };
+
+  const handleQuickCreateAttendance = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onAddAttendanceRecord) return;
+    onAddAttendanceRecord({
+      id: `att_${Date.now()}`,
+      funcionarioId: attEmp,
+      data: attDate,
+      presente: attStatus,
+      horasExtras: 0
+    });
+    setQuickCreateModal(null);
+    setAttEmp('');
+    alert('Assiduidade rápida registada com sucesso!');
+  };
 
   // Department payroll breakdown
   const deptBreakdown = employees.reduce((acc: { [key: string]: { count: number, totalBase: number } }, emp) => {
@@ -593,6 +649,138 @@ export default function DashboardView({
         </div>
 
       </div>
+
+      {/* Quick Create FAB */}
+      {currentUserRole !== UserRole.FUNCIONARIO && (
+        <div className="fixed bottom-6 right-6 flex flex-col items-end z-50">
+          {showQuickMenu && (
+            <div className="mb-4 flex flex-col gap-2 items-end transition-all origin-bottom transform">
+              <button
+                onClick={() => { setQuickCreateModal('task'); setShowQuickMenu(false); }}
+                className="flex items-center gap-3 px-4 py-3 bg-white text-slate-700 shadow-xl rounded-full border border-slate-100 hover:bg-slate-50 hover:text-emerald-600 transition-colors"
+              >
+                <span className="text-sm font-bold">Nova Tarefa</span>
+                <div className="p-2 bg-emerald-50 text-emerald-600 rounded-full"><ClipboardList className="w-4 h-4" /></div>
+              </button>
+              <button
+                onClick={() => { setQuickCreateModal('attendance'); setShowQuickMenu(false); }}
+                className="flex items-center gap-3 px-4 py-3 bg-white text-slate-700 shadow-xl rounded-full border border-slate-100 hover:bg-slate-50 hover:text-emerald-600 transition-colors"
+              >
+                <span className="text-sm font-bold">Nova Presença</span>
+                <div className="p-2 bg-teal-50 text-teal-600 rounded-full"><Clock className="w-4 h-4" /></div>
+              </button>
+            </div>
+          )}
+          <button
+            onClick={() => setShowQuickMenu(!showQuickMenu)}
+            className="w-14 h-14 bg-emerald-600 text-white rounded-full flex items-center justify-center shadow-lg hover:bg-emerald-700 hover:shadow-xl transition-all transform hover:scale-105 active:scale-95 z-50"
+          >
+            {showQuickMenu ? <X className="w-6 h-6" /> : <Plus className="w-6 h-6" />}
+          </button>
+        </div>
+      )}
+
+      {/* Quick Task Modal */}
+      {quickCreateModal === 'task' && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <ClipboardList className="w-5 h-5 text-emerald-600" />
+                Criar Nova Tarefa
+              </h2>
+              <button onClick={() => setQuickCreateModal(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleQuickCreateTask} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Título</label>
+                <input required type="text" value={taskTitle} onChange={e => setTaskTitle(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" placeholder="Ex: Preparar relatório mensal" />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Descrição</label>
+                <textarea required value={taskDesc} onChange={e => setTaskDesc(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 min-h-[80px]" placeholder="Detalhes da tarefa..." />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Atribuir a</label>
+                  <select required value={taskAssignee} onChange={e => setTaskAssignee(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                    <option value="">Selecione...</option>
+                    {employees.filter(e => e.estado === 'Ativo').map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Data Limite</label>
+                  <input required type="date" value={taskDeadline} onChange={e => setTaskDeadline(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                <button type="button" onClick={() => setQuickCreateModal(null)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-800 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors cursor-pointer">
+                  Criar Tarefa
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Attendance Modal */}
+      {quickCreateModal === 'attendance' && (
+        <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center z-[100] backdrop-blur-sm p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Clock className="w-5 h-5 text-teal-600" />
+                Registar Presença
+              </h2>
+              <button onClick={() => setQuickCreateModal(null)} className="text-slate-400 hover:text-slate-600 p-1">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleQuickCreateAttendance} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">Funcionário</label>
+                <select required value={attEmp} onChange={e => setAttEmp(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                  <option value="">Selecione o Funcionário...</option>
+                  {employees.filter(e => e.estado === 'Ativo').map(emp => (
+                    <option key={emp.id} value={emp.id}>{emp.nome} - {emp.cargo}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Data</label>
+                  <input required type="date" value={attDate} onChange={e => setAttDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500" />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">Estado</label>
+                  <select required value={attStatus} onChange={e => setAttStatus(e.target.value as any)} className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                    <option value="Presente">Presente</option>
+                    <option value="Atraso">Atraso</option>
+                    <option value="Falta Justificada">Falta Justificada</option>
+                    <option value="Falta Injustificada">Falta Injustificada</option>
+                  </select>
+                </div>
+              </div>
+              <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
+                <button type="button" onClick={() => setQuickCreateModal(null)} className="px-4 py-2 text-sm font-bold text-slate-600 hover:text-slate-800 transition-colors">
+                  Cancelar
+                </button>
+                <button type="submit" className="px-6 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl shadow-sm transition-colors cursor-pointer">
+                  Registar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
