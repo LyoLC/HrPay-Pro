@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Employee, PayrollProcessed, AttendanceRecord, UserRole, CompanySettings } from '../types';
 import { processFullPayroll } from '../utils/calculations';
 import { downloadCSV } from '../utils/csv';
-import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw, Download } from 'lucide-react';
+import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Cell } from 'recharts';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -48,6 +50,7 @@ export default function PayrollView({
   ];
   const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(EXPORT_COLUMNS.map(c => c.id));
   const [showExportColDropdown, setShowExportColDropdown] = useState(false);
+  const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
 
   // processing drawer modal state
   const [processingEmp, setProcessingEmp] = useState<Employee | null>(null);
@@ -199,6 +202,16 @@ export default function PayrollView({
 
   const preview = previewCalculation();
 
+  const totalNetPay = processedInPeriod.reduce((sum, p) => sum + p.salarioLiquido, 0);
+  const totalINSS = processedInPeriod.reduce((sum, p) => sum + p.impostos.inssTrabalhador, 0);
+  const totalIRPS = processedInPeriod.reduce((sum, p) => sum + p.impostos.irps, 0);
+
+  const chartData = [
+    { name: 'Total Líquido', valor: totalNetPay, fill: '#10b981' },
+    { name: 'Total INSS', valor: totalINSS, fill: '#f43f5e' },
+    { name: 'Total IRPS', valor: totalIRPS, fill: '#6366f1' }
+  ];
+
   return (
     <div className="space-y-6" id="payroll-layout-wrapper">
       {/* Description header */}
@@ -223,6 +236,26 @@ export default function PayrollView({
               <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 shadow-xl rounded-2xl z-50 p-2">
                 <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 mb-1">
                   Colunas para Exportar
+                </div>
+                <div className="flex flex-col gap-1 px-2 mb-2 pb-2 border-b border-slate-100">
+                  <button 
+                    onClick={() => setSelectedExportColumns(EXPORT_COLUMNS.map(c => c.id))}
+                    className="text-left text-xs font-medium text-emerald-600 hover:text-emerald-700 py-1"
+                  >
+                    Selecionar Todas
+                  </button>
+                  <button 
+                    onClick={() => setSelectedExportColumns(['nome', 'base', 'estado'])}
+                    className="text-left text-xs font-medium text-emerald-600 hover:text-emerald-700 py-1"
+                  >
+                    Apenas Info Básica
+                  </button>
+                  <button 
+                    onClick={() => setSelectedExportColumns(['nome', 'bruto', 'inss', 'irps', 'liquido'])}
+                    className="text-left text-xs font-medium text-emerald-600 hover:text-emerald-700 py-1"
+                  >
+                    Apenas Financeiro
+                  </button>
                 </div>
                 {EXPORT_COLUMNS.map(col => (
                   <label key={col.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
@@ -281,6 +314,33 @@ export default function PayrollView({
         </div>
       </div>
 
+      {/* Summary Chart */}
+      {processedInPeriod.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 h-64">
+          <h3 className="font-bold text-slate-800 text-xs sm:text-sm uppercase tracking-wide mb-4">
+            Distribuição de Custos Salariais
+          </h3>
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#64748b' }} tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`} />
+              <Tooltip 
+                cursor={{ fill: '#f8fafc' }}
+                contentStyle={{ borderRadius: '0.75rem', border: '1px solid #e2e8f0', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                formatter={(value: number) => formatMT(value)}
+              />
+              <Bar dataKey="valor" radius={[4, 4, 0, 0]} maxBarSize={60}>
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
       {/* Integration Info Box */}
       <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-200 flex items-start space-x-3 text-emerald-900 text-xs shadow-xs">
         <Sparkles className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -333,21 +393,34 @@ export default function PayrollView({
                   const { unjustifiedFaltas, totalOvertimeHours } = getAutomatedAttendanceMetrics(emp.id);
 
                   return (
-                    <tr key={emp.id} className="hover:bg-slate-50/35 transition-colors">
-                      <td className="py-4 px-6">
-                        <div className="flex items-center space-x-3">
-                          <img
-                            src={emp.foto}
-                            alt={emp.nome}
-                            className="w-9 h-9 rounded-full object-cover border border-slate-100 shrink-0"
-                            referrerPolicy="no-referrer"
-                          />
-                          <div>
-                            <span className="block font-bold text-slate-800">{emp.nome}</span>
-                            <span className="block text-[9px] text-slate-400 font-bold">{emp.cargo}</span>
+                    <React.Fragment key={emp.id}>
+                      <tr 
+                        onClick={() => {
+                          if (pay) setExpandedRowId(expandedRowId === emp.id ? null : emp.id);
+                        }}
+                        className={`hover:bg-slate-50/35 transition-colors ${pay ? 'cursor-pointer' : ''} ${expandedRowId === emp.id ? 'bg-slate-50/50' : ''}`}
+                      >
+                        <td className="py-4 px-6">
+                          <div className="flex items-center space-x-3">
+                            <img
+                              src={emp.foto}
+                              alt={emp.nome}
+                              className="w-9 h-9 rounded-full object-cover border border-slate-100 shrink-0"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div>
+                              <span className="block font-bold text-slate-800 flex items-center gap-1">
+                                {emp.nome}
+                                {pay && (
+                                  expandedRowId === emp.id 
+                                    ? <ChevronUp className="w-3 h-3 text-slate-400" />
+                                    : <ChevronDown className="w-3 h-3 text-slate-400" />
+                                )}
+                              </span>
+                              <span className="block text-[9px] text-slate-400 font-bold">{emp.cargo}</span>
+                            </div>
                           </div>
-                        </div>
-                      </td>
+                        </td>
 
                       <td className="py-4 px-3 font-mono font-bold text-slate-600">
                         {formatMT(emp.salarioBase)}
@@ -397,7 +470,7 @@ export default function PayrollView({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handlePayConfirm(pay.id)}
+                                onClick={(e) => { e.stopPropagation(); handlePayConfirm(pay.id); }}
                                 className="px-2 py-0.5 bg-emerald-600 text-white rounded-md text-[9px] font-extrabold hover:bg-emerald-700 cursor-pointer"
                                 disabled={currentUserRole === UserRole.SUPERVISOR || currentUserRole === UserRole.FUNCIONARIO}
                               >
@@ -411,7 +484,7 @@ export default function PayrollView({
                               </span>
                               <button
                                 type="button"
-                                onClick={() => handleApprove(pay.id)}
+                                onClick={(e) => { e.stopPropagation(); handleApprove(pay.id); }}
                                 className="px-2 py-0.5 bg-indigo-600 text-white rounded-md text-[9px] font-extrabold hover:bg-indigo-700 cursor-pointer"
                                 disabled={currentUserRole !== UserRole.ADMIN && currentUserRole !== UserRole.RH}
                               >
@@ -429,7 +502,7 @@ export default function PayrollView({
                       <td className="py-4 px-6 text-right">
                         <div className="flex justify-end space-x-2">
                           <button
-                            onClick={() => openProcessingDrawer(emp)}
+                            onClick={(e) => { e.stopPropagation(); openProcessingDrawer(emp); }}
                             className="bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-3 py-1.5 rounded-lg text-[10px] flex items-center space-x-1 cursor-pointer"
                             id={`process-btn-${emp.id}`}
                           >
@@ -439,7 +512,7 @@ export default function PayrollView({
 
                           {pay && (
                             <button
-                              onClick={() => onPrintSlip(pay)}
+                              onClick={(e) => { e.stopPropagation(); onPrintSlip(pay); }}
                               className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-100 font-bold p-1.5 rounded-lg text-[10px]"
                               title="Imprimir Recibo"
                             >
@@ -449,6 +522,120 @@ export default function PayrollView({
                         </div>
                       </td>
                     </tr>
+                    <AnimatePresence initial={false}>
+                      {expandedRowId === emp.id && pay && (
+                        <tr className="bg-slate-50/20 border-b border-slate-100">
+                          <td colSpan={9} className="p-0">
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.3, ease: "easeInOut" }}
+                              className="overflow-hidden"
+                            >
+                              <div className="py-4 px-6">
+                                <div className="grid grid-cols-1 md:grid-cols-4 gap-6 p-5 rounded-xl border border-slate-200 bg-white shadow-sm ml-8">
+                                  <div>
+                                    <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-3 border-b border-slate-100 pb-1.5">Vencimentos</h4>
+                                    <ul className="space-y-2 text-xs">
+                                      <li className="flex justify-between items-center">
+                                        <span className="text-slate-500 font-medium">Salário Base</span>
+                                        <span className="font-mono text-slate-700 font-semibold">{formatMT(pay.salarioBase)}</span>
+                                      </li>
+                                      {pay.bonus > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Bónus</span>
+                                          <span className="font-mono text-emerald-600 font-bold">+{formatMT(pay.bonus)}</span>
+                                        </li>
+                                      )}
+                                      {pay.comissoes > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Comissões</span>
+                                          <span className="font-mono text-emerald-600 font-bold">+{formatMT(pay.comissoes)}</span>
+                                        </li>
+                                      )}
+                                      {pay.horasExtras > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Horas Extras ({pay.horasExtrasHoras}h)</span>
+                                          <span className="font-mono text-emerald-600 font-bold">+{formatMT(pay.horasExtras)}</span>
+                                        </li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                  
+                                  <div>
+                                    <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-3 border-b border-slate-100 pb-1.5">Subsídios</h4>
+                                    <ul className="space-y-2 text-xs">
+                                      {pay.subsidioTransporte > 0 ? (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Transporte</span>
+                                          <span className="font-mono text-slate-700 font-semibold">{formatMT(pay.subsidioTransporte)}</span>
+                                        </li>
+                                      ) : null}
+                                      {pay.subsidioAlimentacao > 0 ? (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Alimentação</span>
+                                          <span className="font-mono text-slate-700 font-semibold">{formatMT(pay.subsidioAlimentacao)}</span>
+                                        </li>
+                                      ) : null}
+                                      {pay.subsidioTransporte === 0 && pay.subsidioAlimentacao === 0 && (
+                                        <li className="text-slate-400 italic text-[11px]">Nenhum subsídio apurado</li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                  
+                                  <div>
+                                    <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-3 border-b border-slate-100 pb-1.5">Deduções</h4>
+                                    <ul className="space-y-2 text-xs">
+                                      {pay.faltasDeducao > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Faltas Injustificadas</span>
+                                          <span className="font-mono text-rose-600 font-bold">-{formatMT(pay.faltasDeducao)}</span>
+                                        </li>
+                                      )}
+                                      {pay.vales > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Vales / Adiantamentos</span>
+                                          <span className="font-mono text-rose-600 font-bold">-{formatMT(pay.vales)}</span>
+                                        </li>
+                                      )}
+                                      {pay.impostos.outrosDescontos > 0 && (
+                                        <li className="flex justify-between items-center">
+                                          <span className="text-slate-500 font-medium">Outros Descontos</span>
+                                          <span className="font-mono text-rose-600 font-bold">-{formatMT(pay.impostos.outrosDescontos)}</span>
+                                        </li>
+                                      )}
+                                      {pay.faltasDeducao === 0 && pay.vales === 0 && pay.impostos.outrosDescontos === 0 && (
+                                        <li className="text-slate-400 italic text-[11px]">Nenhuma dedução apurada</li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                  
+                                  <div>
+                                    <h4 className="text-[10px] uppercase font-bold text-slate-400 mb-3 border-b border-slate-100 pb-1.5">Impostos</h4>
+                                    <ul className="space-y-2 text-xs">
+                                      <li className="flex justify-between items-center">
+                                        <span className="text-slate-500 font-medium">INSS (3% Trabalhador)</span>
+                                        <span className="font-mono text-rose-600 font-bold">-{formatMT(pay.impostos.inssTrabalhador)}</span>
+                                      </li>
+                                      <li className="flex justify-between items-center">
+                                        <span className="text-slate-500 font-medium">IRPS Retido</span>
+                                        <span className="font-mono text-rose-600 font-bold">-{formatMT(pay.impostos.irps)}</span>
+                                      </li>
+                                      <li className="flex justify-between items-center border-t border-slate-100 pt-2 mt-2">
+                                        <span className="text-slate-400 font-medium text-[10px]">Encargo INSS Patronal (4%)</span>
+                                        <span className="font-mono text-slate-400 font-semibold text-[10px]">{formatMT(pay.impostos.inssPatronal)}</span>
+                                      </li>
+                                    </ul>
+                                  </div>
+                                </div>
+                              </div>
+                            </motion.div>
+                          </td>
+                        </tr>
+                      )}
+                    </AnimatePresence>
+                    </React.Fragment>
                   );
                 })
               )}

@@ -65,6 +65,8 @@ export default function App() {
 
   // Search State
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [searchDepartmentFilter, setSearchDepartmentFilter] = useState('');
+  const [searchSalaryFilter, setSearchSalaryFilter] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Notifications State
@@ -140,8 +142,7 @@ export default function App() {
         if (savedEmployees.length > 0) {
           setEmployees(savedEmployees);
         } else {
-          setEmployees(MOCK_EMPLOYEES);
-          await saveEmployees(MOCK_EMPLOYEES);
+          setEmployees([]);
         }
 
         // 3. Contracts recall
@@ -149,8 +150,7 @@ export default function App() {
         if (savedContracts.length > 0) {
           setContracts(savedContracts);
         } else {
-          setContracts(MOCK_CONTRACTS);
-          await saveContracts(MOCK_CONTRACTS);
+          setContracts([]);
         }
 
         // 4. Attendance recall
@@ -158,9 +158,7 @@ export default function App() {
         if (savedAttendance.length > 0) {
           setAttendance(savedAttendance);
         } else {
-          const generated = generateMockAttendance();
-          setAttendance(generated);
-          await saveAttendance(generated);
+          setAttendance([]);
         }
 
         // 5. Tasks recall
@@ -168,8 +166,7 @@ export default function App() {
         if (savedTasks.length > 0) {
           setTasks(savedTasks);
         } else {
-          setTasks(MOCK_TASKS);
-          await saveTasks(MOCK_TASKS);
+          setTasks([]);
         }
 
         // 6. Payroll Processed history recall
@@ -177,9 +174,7 @@ export default function App() {
         if (savedPayroll.length > 0) {
           setPayrollHistory(savedPayroll);
         } else {
-          const generatedHistory = generateMockPaymentsMay();
-          setPayrollHistory(generatedHistory);
-          await savePayroll(generatedHistory);
+          setPayrollHistory([]);
         }
 
         // 7. Company settings recall
@@ -554,19 +549,31 @@ export default function App() {
 
   // Global Search
   const getGlobalSearchResults = () => {
-    if (!globalSearchQuery.trim()) return { employees: [], payrolls: [] };
+    if (!globalSearchQuery.trim() && !searchDepartmentFilter && !searchSalaryFilter) return { employees: [], payrolls: [] };
     const query = globalSearchQuery.toLowerCase();
     
-    const matchedEmployees = employees.filter(emp => 
-      emp.nome.toLowerCase().includes(query) || 
-      emp.codigoFuncionario.toLowerCase().includes(query)
-    ).slice(0, 5);
+    const checkSalaryRange = (salary: number, range: string) => {
+      if (!range) return true;
+      if (range === 'low') return salary < 30000;
+      if (range === 'medium') return salary >= 30000 && salary <= 80000;
+      if (range === 'high') return salary > 80000;
+      return true;
+    };
+
+    const matchedEmployees = employees.filter(emp => {
+      const matchesText = !query || emp.nome.toLowerCase().includes(query) || emp.codigoFuncionario.toLowerCase().includes(query);
+      const matchesDept = !searchDepartmentFilter || emp.departamento === searchDepartmentFilter;
+      const matchesSalary = !searchSalaryFilter || checkSalaryRange(emp.salarioBase, searchSalaryFilter);
+      return matchesText && matchesDept && matchesSalary;
+    }).slice(0, 5);
     
-    const matchedPayrolls = payrollHistory.filter(pay => 
-      pay.funcionarioNome?.toLowerCase().includes(query) || 
-      pay.id.toLowerCase().includes(query) ||
-      pay.periodo.toLowerCase().includes(query)
-    ).slice(0, 5);
+    const matchedPayrolls = payrollHistory.filter(pay => {
+      const emp = employees.find(e => e.id === pay.funcionarioId);
+      const matchesText = !query || pay.funcionarioNome?.toLowerCase().includes(query) || pay.id.toLowerCase().includes(query) || pay.periodo.toLowerCase().includes(query);
+      const matchesDept = !searchDepartmentFilter || (emp && emp.departamento === searchDepartmentFilter);
+      const matchesSalary = !searchSalaryFilter || checkSalaryRange(pay.salarioBase, searchSalaryFilter);
+      return matchesText && matchesDept && matchesSalary;
+    }).slice(0, 5);
     
     return { employees: matchedEmployees, payrolls: matchedPayrolls };
   };
@@ -868,7 +875,16 @@ export default function App() {
         <header className="hidden md:flex justify-between items-center px-8 py-4 bg-white/80 backdrop-blur-md border-b border-slate-100 shrink-0 sticky top-0 z-30">
           
           {/* Global Search Bar */}
-          <div className="flex-1 max-w-md relative">
+          <div 
+            className="flex-1 max-w-md relative"
+            onFocus={() => setShowSearchResults(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) {
+                setShowSearchResults(false);
+              }
+            }}
+            tabIndex={-1}
+          >
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
@@ -880,17 +896,37 @@ export default function App() {
                   setGlobalSearchQuery(e.target.value);
                   setShowSearchResults(true);
                 }}
-                onFocus={() => setShowSearchResults(true)}
-                onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
               />
             </div>
             
             {/* Search Results Dropdown */}
-            {showSearchResults && globalSearchQuery.trim() !== '' && (
+            {showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-2">
+                  <select
+                    className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    value={searchDepartmentFilter}
+                    onChange={(e) => setSearchDepartmentFilter(e.target.value)}
+                  >
+                    <option value="">Todos Departamentos</option>
+                    {['Recursos Humanos', 'Engenharia', 'Vendas', 'Marketing', 'Financeiro', 'Operações', 'Administração'].map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    value={searchSalaryFilter}
+                    onChange={(e) => setSearchSalaryFilter(e.target.value)}
+                  >
+                    <option value="">Qualquer Salário</option>
+                    <option value="low">Menos de 30.000 MT</option>
+                    <option value="medium">30.000 - 80.000 MT</option>
+                    <option value="high">Mais de 80.000 MT</option>
+                  </select>
+                </div>
                 {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-500 font-medium">
-                    Nenhum resultado encontrado para "{globalSearchQuery}"
+                    Nenhum resultado encontrado para a pesquisa.
                   </div>
                 ) : (
                   <div className="max-h-80 overflow-y-auto p-2">
@@ -1075,7 +1111,16 @@ export default function App() {
 
         {/* Mobile Search Bar */}
         <div className="md:hidden px-4 py-3 bg-white border-b border-slate-100 z-30 shrink-0">
-          <div className="relative">
+          <div 
+            className="relative"
+            onFocus={() => setShowSearchResults(true)}
+            onBlur={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget)) {
+                setShowSearchResults(false);
+              }
+            }}
+            tabIndex={-1}
+          >
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
@@ -1086,15 +1131,35 @@ export default function App() {
                 setGlobalSearchQuery(e.target.value);
                 setShowSearchResults(true);
               }}
-              onFocus={() => setShowSearchResults(true)}
-              onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
             />
             {/* Search Results Dropdown */}
-            {showSearchResults && globalSearchQuery.trim() !== '' && (
+            {showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
               <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-2">
+                  <select
+                    className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    value={searchDepartmentFilter}
+                    onChange={(e) => setSearchDepartmentFilter(e.target.value)}
+                  >
+                    <option value="">Todos Departamentos</option>
+                    {['Recursos Humanos', 'Engenharia', 'Vendas', 'Marketing', 'Financeiro', 'Operações', 'Administração'].map(dept => (
+                      <option key={dept} value={dept}>{dept}</option>
+                    ))}
+                  </select>
+                  <select
+                    className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                    value={searchSalaryFilter}
+                    onChange={(e) => setSearchSalaryFilter(e.target.value)}
+                  >
+                    <option value="">Qualquer Salário</option>
+                    <option value="low">Menos de 30.000 MT</option>
+                    <option value="medium">30.000 - 80.000 MT</option>
+                    <option value="high">Mais de 80.000 MT</option>
+                  </select>
+                </div>
                 {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-500 font-medium">
-                    Nenhum resultado encontrado para "{globalSearchQuery}"
+                    Nenhum resultado encontrado para a pesquisa.
                   </div>
                 ) : (
                   <div className="max-h-80 overflow-y-auto p-2">
