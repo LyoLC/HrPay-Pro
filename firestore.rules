@@ -1,23 +1,39 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /funcionarios/{document=**} {
-      allow read, write: if request.auth != null;
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
-    match /contratos/{document=**} {
-      allow read, write: if request.auth != null;
+    
+    // In a real production app, you would check a user role or claim
+    // function isAdmin() {
+    //   return isAuthenticated() && request.auth.token.admin == true;
+    // }
+
+    match /employees/{document=**} {
+      allow read, write: if isAuthenticated();
     }
-    match /assiduidade/{document=**} {
-      allow read, write: if request.auth != null;
+    match /contracts/{document=**} {
+      allow read, write: if isAuthenticated();
     }
-    match /atividades/{document=**} {
-      allow read, write: if request.auth != null;
+    match /attendance/{document=**} {
+      allow read, write: if isAuthenticated();
     }
-    match /processamento_salarial/{document=**} {
-      allow read, write: if request.auth != null;
+    match /tasks/{document=**} {
+      allow read, write: if isAuthenticated();
     }
-    match /configuracoes/{document=**} {
-      allow read, write: if request.auth != null;
+    match /payroll/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /settings/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /reports/{document=**} {
+      allow read, write: if isAuthenticated();
+    }
+    match /userPreferences/{document=**} {
+      allow read, write: if isAuthenticated();
     }
     
     // Deny access to anything else by default

@@ -28,7 +28,7 @@ import PrintView from './components/PrintView';
 // Icons
 import { 
   LayoutDashboard, Users, FileLock2, CalendarDays, CheckSquare, 
-  Banknote, FileBarChart2, Settings, UserCircle, LogOut, Menu, X, Landmark, Bell, FileText, Moon, Sun
+  Banknote, FileBarChart2, Settings, UserCircle, LogOut, Menu, X, Landmark, Bell, FileText, Moon, Sun, Search
 } from 'lucide-react';
 
 import hrpayLogo from './assets/images/hrpay_pro_logo_1782570869903.jpg';
@@ -41,7 +41,8 @@ import {
   fetchPayroll, savePayroll, 
   fetchSettings, saveSettings,
   fetchReports, saveReports,
-  subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges
+  subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges,
+  uploadBackupToStorage
 } from './lib/firestore';
 
 import { sendMockEmail } from './utils/mockEmailService';
@@ -61,6 +62,10 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeSection, setActiveSection] = useState<MenuSection>('Dashboard');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Search State
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [showSearchResults, setShowSearchResults] = useState(false);
 
   // Notifications State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -87,6 +92,9 @@ export default function App() {
     emailEmpresa: 'contacto@mventures.co.mz',
     taxaInssTrabalhador: 0.03, // 3% Worker
     taxaInssPatronal: 0.04, // 4% Employer
+    prazoInss: 10,
+    prazoIrps: 20,
+    horarioAlertaContratos: '09:00',
     irpsBrackets: DEFAULT_IRPS_BRACKETS
   });
 
@@ -246,49 +254,105 @@ export default function App() {
   useEffect(() => {
     if (!initialLoadDone || contracts.length === 0) return;
 
-    // We use a ref or simple localStorage check to avoid notifying multiple times per session
-    const lastChecked = localStorage.getItem('last_contract_check');
-    const today = new Date().toISOString().split('T')[0];
-
-    if (lastChecked !== today) {
-      const msPerDay = 1000 * 60 * 60 * 24;
+    const checkContracts = () => {
+      const lastChecked = localStorage.getItem('last_contract_check');
       const now = new Date();
-      let sentAlerts = 0;
-      const targetDays = [30, 15, 7];
+      const today = now.toISOString().split('T')[0];
+      
+      const alertTime = settings.horarioAlertaContratos || '09:00';
+      const [alertHour, alertMinute] = alertTime.split(':').map(Number);
+      
+      const isPastAlertTime = now.getHours() > alertHour || (now.getHours() === alertHour && now.getMinutes() >= alertMinute);
 
-      contracts.forEach(contract => {
-        if (contract.estado === 'Ativo' && contract.dataFim) {
-          const endDate = new Date(contract.dataFim);
-          const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / msPerDay);
-          
-          if (targetDays.includes(diffDays)) {
-            const emp = employees.find(e => e.id === contract.funcionarioId);
-            if (emp) {
-              setNotifications(prev => [
-                {
-                  id: Math.random().toString(36).substring(2, 9),
-                  title: 'Alerta de Expiração de Contrato',
-                  message: `[E-mail enviado para ${emp.email} e RH] O contrato de ${emp.nome} expira em exactamente ${diffDays} dias (${contract.dataFim}).`,
-                  date: new Date(),
-                  read: false
-                },
-                ...prev
-              ]);
-              
-              sendMockEmail(
-                [emp.email, settings.emailEmpresa || 'rh@empresa.com'],
-                `Aviso Importante: Contrato expirando em ${diffDays} dias`,
-                `Olá ${emp.nome},\n\nEste é um alerta automático de que o seu contrato de trabalho (${contract.tipo}) terminará em ${diffDays} dias, no dia ${contract.dataFim}.\n\nPor favor, contacte o departamento de Recursos Humanos.\n\nAtenciosamente,\nRecursos Humanos\n${settings.nomeEmpresa}`
-              );
+      if (lastChecked !== today && isPastAlertTime) {
+        const msPerDay = 1000 * 60 * 60 * 24;
+        const targetDays = [30, 15, 7];
 
-              sentAlerts++;
+        contracts.forEach(contract => {
+          if (contract.estado === 'Ativo' && contract.dataFim) {
+            const endDate = new Date(contract.dataFim);
+            const diffDays = Math.ceil((endDate.getTime() - now.getTime()) / msPerDay);
+            
+            if (targetDays.includes(diffDays)) {
+              const emp = employees.find(e => e.id === contract.funcionarioId);
+              if (emp) {
+                setNotifications(prev => [
+                  {
+                    id: Math.random().toString(36).substring(2, 9),
+                    title: 'Alerta de Expiração de Contrato',
+                    message: `[E-mail enviado para ${emp.email} e RH] O contrato de ${emp.nome} expira em exactamente ${diffDays} dias (${contract.dataFim}).`,
+                    date: new Date(),
+                    read: false
+                  },
+                  ...prev
+                ]);
+                
+                sendMockEmail(
+                  [emp.email, settings.emailEmpresa || 'rh@empresa.com'],
+                  `Aviso Importante: Contrato expirando em ${diffDays} dias`,
+                  `Olá ${emp.nome},\n\nEste é um alerta automático de que o seu contrato de trabalho (${contract.tipo}) terminará em ${diffDays} dias, no dia ${contract.dataFim}.\n\nPor favor, contacte o departamento de Recursos Humanos.\n\nAtenciosamente,\nRecursos Humanos\n${settings.nomeEmpresa}`
+                );
+              }
             }
           }
-        }
-      });
-      localStorage.setItem('last_contract_check', today);
-    }
+        });
+        localStorage.setItem('last_contract_check', today);
+      }
+    };
+
+    // Check immediately and then every minute
+    checkContracts();
+    const interval = setInterval(checkContracts, 60 * 1000);
+    return () => clearInterval(interval);
   }, [initialLoadDone, contracts, employees, settings]);
+
+  // Weekly Backup Service
+  useEffect(() => {
+    if (!initialLoadDone || !currentUser) return;
+
+    const performBackup = async () => {
+      try {
+        const lastBackupStr = localStorage.getItem(`${LOCAL_STORAGE_PREFIX}last_weekly_backup`);
+        const now = new Date();
+        
+        let shouldBackup = false;
+        if (!lastBackupStr) {
+          shouldBackup = true;
+        } else {
+          const lastBackupDate = new Date(lastBackupStr);
+          const diffMs = now.getTime() - lastBackupDate.getTime();
+          const diffDays = diffMs / (1000 * 60 * 60 * 24);
+          if (diffDays >= 7) {
+            shouldBackup = true;
+          }
+        }
+
+        if (shouldBackup) {
+          const backupData = {
+            timestamp: now.toISOString(),
+            employees,
+            contracts,
+            attendance,
+            tasks,
+            payrollHistory,
+            settings
+          };
+          
+          const filename = `backups/backup_${now.toISOString().split('T')[0]}.json`;
+          await uploadBackupToStorage(filename, backupData);
+          
+          localStorage.setItem(`${LOCAL_STORAGE_PREFIX}last_weekly_backup`, now.toISOString());
+          console.log(`Backup semanal automático concluído: ${filename}`);
+        }
+      } catch (error) {
+        console.error('Erro ao efetuar o backup semanal:', error);
+      }
+    };
+    
+    // Slight delay to not block the main UI render
+    const timeout = setTimeout(performBackup, 3000);
+    return () => clearTimeout(timeout);
+  }, [initialLoadDone, currentUser, employees, contracts, attendance, tasks, payrollHistory, settings]);
 
   // Standard write triggers to disk
   const saveEmployeesToStorage = async (list: Employee[]) => {
@@ -488,6 +552,27 @@ export default function App() {
     savePayrollToStorage(list);
   };
 
+  // Global Search
+  const getGlobalSearchResults = () => {
+    if (!globalSearchQuery.trim()) return { employees: [], payrolls: [] };
+    const query = globalSearchQuery.toLowerCase();
+    
+    const matchedEmployees = employees.filter(emp => 
+      emp.nome.toLowerCase().includes(query) || 
+      emp.codigoFuncionario.toLowerCase().includes(query)
+    ).slice(0, 5);
+    
+    const matchedPayrolls = payrollHistory.filter(pay => 
+      pay.funcionarioNome?.toLowerCase().includes(query) || 
+      pay.id.toLowerCase().includes(query) ||
+      pay.periodo.toLowerCase().includes(query)
+    ).slice(0, 5);
+    
+    return { employees: matchedEmployees, payrolls: matchedPayrolls };
+  };
+
+  const globalSearchResults = getGlobalSearchResults();
+
   // Router dispatcher
   const renderRouterSection = () => {
     if (!currentUser) return null;
@@ -501,6 +586,7 @@ export default function App() {
             attendance={attendance}
             tasks={tasks}
             payrollHistory={payrollHistory}
+            settings={settings}
             onNavigate={setActiveSection}
             currentUserRole={currentUser.perfil}
             onAddTask={handleAddTask}
@@ -779,7 +865,92 @@ export default function App() {
       <div className="flex-1 flex flex-col min-w-0" id="main-content-scrollable">
         
         {/* Desktop TopBar */}
-        <header className="hidden md:flex justify-end items-center px-8 py-4 bg-white/80 backdrop-blur-md border-b border-slate-100 shrink-0 sticky top-0 z-30">
+        <header className="hidden md:flex justify-between items-center px-8 py-4 bg-white/80 backdrop-blur-md border-b border-slate-100 shrink-0 sticky top-0 z-30">
+          
+          {/* Global Search Bar */}
+          <div className="flex-1 max-w-md relative">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Pesquisar funcionários ou folhas de salário..."
+                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                value={globalSearchQuery}
+                onChange={(e) => {
+                  setGlobalSearchQuery(e.target.value);
+                  setShowSearchResults(true);
+                }}
+                onFocus={() => setShowSearchResults(true)}
+                onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+              />
+            </div>
+            
+            {/* Search Results Dropdown */}
+            {showSearchResults && globalSearchQuery.trim() !== '' && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                    Nenhum resultado encontrado para "{globalSearchQuery}"
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {globalSearchResults.employees.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Funcionários</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.employees.map(emp => (
+                            <button
+                              key={emp.id}
+                              onClick={() => {
+                                setActiveSection('Funcionários');
+                                setShowSearchResults(false);
+                                setGlobalSearchQuery('');
+                              }}
+                              className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">{emp.nome}</p>
+                                <p className="text-[10px] text-slate-500">{emp.cargo}</p>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.codigoFuncionario}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {globalSearchResults.payrolls.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Folhas de Salário</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.payrolls.map(pay => (
+                            <button
+                              key={pay.id}
+                              onClick={() => {
+                                setActiveSection('Processamento Salarial');
+                                setShowSearchResults(false);
+                                setGlobalSearchQuery('');
+                              }}
+                              className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">{pay.funcionarioNome}</p>
+                                <p className="text-[10px] text-slate-500">{pay.periodo}</p>
+                              </div>
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {pay.status || 'Pendente'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center space-x-3">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
@@ -901,6 +1072,89 @@ export default function App() {
             </div>
           </div>
         </header>
+
+        {/* Mobile Search Bar */}
+        <div className="md:hidden px-4 py-3 bg-white border-b border-slate-100 z-30 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Pesquisar funcionários ou salário..."
+              className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+              value={globalSearchQuery}
+              onChange={(e) => {
+                setGlobalSearchQuery(e.target.value);
+                setShowSearchResults(true);
+              }}
+              onFocus={() => setShowSearchResults(true)}
+              onBlur={() => setTimeout(() => setShowSearchResults(false), 200)}
+            />
+            {/* Search Results Dropdown */}
+            {showSearchResults && globalSearchQuery.trim() !== '' && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500 font-medium">
+                    Nenhum resultado encontrado para "{globalSearchQuery}"
+                  </div>
+                ) : (
+                  <div className="max-h-80 overflow-y-auto p-2">
+                    {globalSearchResults.employees.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Funcionários</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.employees.map(emp => (
+                            <button
+                              key={emp.id}
+                              onClick={() => {
+                                setActiveSection('Funcionários');
+                                setShowSearchResults(false);
+                                setGlobalSearchQuery('');
+                              }}
+                              className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">{emp.nome}</p>
+                                <p className="text-[10px] text-slate-500">{emp.cargo}</p>
+                              </div>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.codigoFuncionario}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {globalSearchResults.payrolls.length > 0 && (
+                      <div>
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Folhas de Salário</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.payrolls.map(pay => (
+                            <button
+                              key={pay.id}
+                              onClick={() => {
+                                setActiveSection('Processamento Salarial');
+                                setShowSearchResults(false);
+                                setGlobalSearchQuery('');
+                              }}
+                              className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                            >
+                              <div>
+                                <p className="text-xs font-bold text-slate-800">{pay.funcionarioNome}</p>
+                                <p className="text-[10px] text-slate-500">{pay.periodo}</p>
+                              </div>
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {pay.status || 'Pendente'}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* Master Router views */}
         <main className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">

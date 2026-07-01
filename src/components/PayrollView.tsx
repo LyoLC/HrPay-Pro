@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { Employee, PayrollProcessed, AttendanceRecord, UserRole, CompanySettings } from '../types';
 import { processFullPayroll } from '../utils/calculations';
-import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw } from 'lucide-react';
+import { downloadCSV } from '../utils/csv';
+import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw, Download } from 'lucide-react';
 
 interface PayrollViewProps {
   employees: Employee[];
@@ -33,6 +34,20 @@ export default function PayrollView({
   const [simBonus, setSimBonus] = useState(0);
   const [simOvertime, setSimOvertime] = useState(0);
   const [simAbsences, setSimAbsences] = useState(0);
+
+  const EXPORT_COLUMNS = [
+    { id: 'nome', label: 'Funcionario' },
+    { id: 'base', label: 'Salario Base (MT)' },
+    { id: 'faltas', label: 'Faltas' },
+    { id: 'horasExtras', label: 'Horas Extras' },
+    { id: 'bruto', label: 'Total Bruto (MT)' },
+    { id: 'inss', label: 'INSS (MT)' },
+    { id: 'irps', label: 'IRPS (MT)' },
+    { id: 'liquido', label: 'Liquido (MT)' },
+    { id: 'estado', label: 'Estado' }
+  ];
+  const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(EXPORT_COLUMNS.map(c => c.id));
+  const [showExportColDropdown, setShowExportColDropdown] = useState(false);
 
   // processing drawer modal state
   const [processingEmp, setProcessingEmp] = useState<Employee | null>(null);
@@ -154,6 +169,34 @@ export default function PayrollView({
     return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val).replace('MZN', 'MT');
   };
 
+  const handleExportCSV = () => {
+    const activeColumns = EXPORT_COLUMNS.filter(col => selectedExportColumns.includes(col.id));
+    const headers = activeColumns.map(col => col.label).join(',');
+
+    const rows = activeEmployees.map(emp => {
+      const pay = getProcessedRecord(emp.id);
+      const { unjustifiedFaltas, totalOvertimeHours } = getAutomatedAttendanceMetrics(emp.id);
+      
+      const dataMap: Record<string, string> = {
+        nome: `"${emp.nome}"`,
+        base: emp.salarioBase.toFixed(2),
+        faltas: unjustifiedFaltas.toString(),
+        horasExtras: totalOvertimeHours.toString(),
+        bruto: pay ? pay.totalBruto.toFixed(2) : '0.00',
+        inss: pay ? pay.impostos.inssTrabalhador.toFixed(2) : '0.00',
+        irps: pay ? pay.impostos.irps.toFixed(2) : '0.00',
+        liquido: pay ? pay.salarioLiquido.toFixed(2) : '0.00',
+        estado: pay ? (pay.status === 'Pago' || pay.pago ? 'Pago' : pay.status === 'Aprovado' ? 'Aprovado' : 'Pendente Revisao') : 'Nao Calculado'
+      };
+
+      return activeColumns.map(col => dataMap[col.id]).join(',');
+    });
+
+    const csvContent = [headers, ...rows].join('\n');
+    const filename = `Folha_Salarial_${selectedMonth.toString().padStart(2, '0')}_${selectedYear}.csv`;
+    downloadCSV(csvContent, filename);
+  };
+
   const preview = previewCalculation();
 
   return (
@@ -167,6 +210,47 @@ export default function PayrollView({
 
         {/* Month selector dropdowns */}
         <div className="flex items-center space-x-4 shrink-0">
+          <div className="relative">
+            <button
+              onClick={() => setShowExportColDropdown(!showExportColDropdown)}
+              className="bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+            >
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Colunas</span>
+            </button>
+
+            {showExportColDropdown && (
+              <div className="absolute right-0 mt-2 w-56 bg-white border border-slate-100 shadow-xl rounded-2xl z-50 p-2">
+                <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 mb-1">
+                  Colunas para Exportar
+                </div>
+                {EXPORT_COLUMNS.map(col => (
+                  <label key={col.id} className="flex items-center space-x-2 p-2 hover:bg-slate-50 rounded-xl cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedExportColumns.includes(col.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedExportColumns([...selectedExportColumns, col.id]);
+                        } else {
+                          setSelectedExportColumns(selectedExportColumns.filter(id => id !== col.id));
+                        }
+                      }}
+                      className="rounded text-emerald-600 focus:ring-emerald-500 bg-slate-100 border-slate-300 w-3.5 h-3.5"
+                    />
+                    <span className="text-xs font-medium text-slate-700">{col.label}</span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleExportCSV}
+            className="bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+            <span>Exportar CSV</span>
+          </button>
           <button
             onClick={() => setShowSimulator(true)}
             className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"

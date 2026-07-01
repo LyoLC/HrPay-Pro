@@ -21,6 +21,9 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
   // Security variables state
   const [inssTrabalhador, setInssTrabalhador] = useState(settings.taxaInssTrabalhador * 100);
   const [inssPatronal, setInssPatronal] = useState(settings.taxaInssPatronal * 100);
+  const [prazoInss, setPrazoInss] = useState(settings.prazoInss || 10);
+  const [prazoIrps, setPrazoIrps] = useState(settings.prazoIrps || 20);
+  const [horarioAlertaContratos, setHorarioAlertaContratos] = useState(settings.horarioAlertaContratos || '09:00');
 
   // IRPS Brackets list state
   const [brackets, setBrackets] = useState<IrpsBracket[]>([...settings.irpsBrackets]);
@@ -55,6 +58,9 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
       emailEmpresa: email,
       taxaInssTrabalhador: inssTrabalhador / 100,
       taxaInssPatronal: inssPatronal / 100,
+      prazoInss,
+      prazoIrps,
+      horarioAlertaContratos,
       irpsBrackets: brackets
     };
 
@@ -368,6 +374,53 @@ export default function ConfigView({ settings, onSaveSettings }: ConfigViewProps
 
               <div className="text-[10px] text-slate-400 font-semibold leading-relaxed p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                 Os valores regulamentares nacionais de Moçambique são de **3%** de retenção do trabalhador e **4%** de contribuição directa da instituição patronal.
+              </div>
+            </div>
+          </div>
+
+          {/* Box E: Prazos de Submissão */}
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+            <h3 className="font-extrabold text-slate-800 text-sm flex items-center space-x-2">
+              <RefreshCcw className="w-4 h-4 text-emerald-600" />
+              <span>Prazos de Submissão Mensais</span>
+            </h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Dia Limite INSS (ex: 10)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:outline-none"
+                  value={prazoInss}
+                  onChange={e => setPrazoInss(Number(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Dia Limite IRPS (ex: 20)</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={31}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:outline-none"
+                  value={prazoIrps}
+                  onChange={e => setPrazoIrps(Number(e.target.value))}
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-slate-600 block mb-1">Horário de Alertas de Contratos</label>
+                <input
+                  type="time"
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2 px-3 text-xs font-bold text-slate-800 focus:outline-none"
+                  value={horarioAlertaContratos}
+                  onChange={e => setHorarioAlertaContratos(e.target.value)}
+                />
               </div>
             </div>
           </div>

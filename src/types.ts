@@ -173,6 +173,9 @@ export interface CompanySettings {
   emailEmpresa: string;
   taxaInssTrabalhador: number; // default is 3% (.03)
   taxaInssPatronal: number;  // default is 4% (.04)
+  prazoInss?: number; // default is 10 (10th of next month)
+  prazoIrps?: number; // default is 20 (20th of next month)
+  horarioAlertaContratos?: string; // Time to check contracts (e.g. '09:00')
   irpsBrackets: IrpsBracket[];
 }
 

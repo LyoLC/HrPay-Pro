@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole, ActivityTask } from '../types';
+import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole, ActivityTask, CompanySettings } from '../types';
 import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2, Plus, X, ClipboardList, Clock } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from 'recharts';
 
@@ -9,6 +9,7 @@ interface DashboardViewProps {
   attendance: AttendanceRecord[];
   tasks: ActivityTask[];
   payrollHistory: PayrollProcessed[];
+  settings: CompanySettings;
   onNavigate: (section: any) => void;
   currentUserRole: UserRole;
   onAddTask?: (task: ActivityTask) => void;
@@ -21,6 +22,7 @@ export default function DashboardView({
   attendance,
   tasks,
   payrollHistory,
+  settings,
   onNavigate,
   currentUserRole,
   onAddTask,
@@ -166,6 +168,27 @@ export default function DashboardView({
     const bDate = new Date(b.dataNascimento).getDate();
     return aDate - bDate;
   });
+
+  // Tax Deadlines
+  const prazoInss = settings.prazoInss || 10;
+  const prazoIrps = settings.prazoIrps || 20;
+
+  // Let's assume the obligations refer to the latest processed month (May 2026 for now, or just next month of today)
+  const todayDate = new Date(today);
+  
+  // Find next INSS deadline
+  let inssDeadline = new Date(todayDate.getFullYear(), todayDate.getMonth(), prazoInss);
+  if (todayDate > inssDeadline) {
+    inssDeadline = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, prazoInss);
+  }
+  const daysToInss = Math.ceil((inssDeadline.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
+
+  // Find next IRPS deadline
+  let irpsDeadline = new Date(todayDate.getFullYear(), todayDate.getMonth(), prazoIrps);
+  if (todayDate > irpsDeadline) {
+    irpsDeadline = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, prazoIrps);
+  }
+  const daysToIrps = Math.ceil((irpsDeadline.getTime() - todayDate.getTime()) / (1000 * 60 * 60 * 24));
 
   // Pending Payroll Approvals (status is 'Pendente Revisão' or missing/falsy pago without 'Aprovado'/'Pago')
   const pendingPayrollApprovals = payrollHistory.filter(p => p.status === 'Pendente Revisão' || (!p.status && !p.pago)).length;
@@ -690,6 +713,47 @@ export default function DashboardView({
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Box E: Prazos Fiscais */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4 md:col-span-2 lg:col-span-1">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-blue-700">
+              <Calendar className="w-4 h-4" />
+              <span>Obrigações Fiscais</span>
+            </h3>
+            <span className="text-[10px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-full">
+              Prazos
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+            <div className={`p-4 rounded-xl border ${daysToInss <= 5 ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} flex items-center justify-between`}>
+              <div>
+                <span className={`block text-[10px] uppercase font-bold tracking-wider ${daysToInss <= 5 ? 'text-rose-600' : 'text-slate-500'}`}>INSS</span>
+                <span className={`block text-xl font-black mt-1 ${daysToInss <= 5 ? 'text-rose-950' : 'text-slate-800'}`}>Dia {prazoInss}</span>
+                <span className={`text-[9px] font-medium block mt-1 ${daysToInss <= 5 ? 'text-rose-800' : 'text-slate-500'}`}>
+                  {daysToInss === 0 ? 'Expira hoje!' : `Faltam ${daysToInss} dias`}
+                </span>
+              </div>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${daysToInss <= 5 ? 'bg-rose-100 text-rose-600' : 'bg-slate-200 text-slate-600'}`}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-xl border ${daysToIrps <= 5 ? 'bg-rose-50 border-rose-100' : 'bg-slate-50 border-slate-100'} flex items-center justify-between`}>
+              <div>
+                <span className={`block text-[10px] uppercase font-bold tracking-wider ${daysToIrps <= 5 ? 'text-rose-600' : 'text-slate-500'}`}>IRPS</span>
+                <span className={`block text-xl font-black mt-1 ${daysToIrps <= 5 ? 'text-rose-950' : 'text-slate-800'}`}>Dia {prazoIrps}</span>
+                <span className={`text-[9px] font-medium block mt-1 ${daysToIrps <= 5 ? 'text-rose-800' : 'text-slate-500'}`}>
+                  {daysToIrps === 0 ? 'Expira hoje!' : `Faltam ${daysToIrps} dias`}
+                </span>
+              </div>
+              <div className={`w-10 h-10 rounded-full flex items-center justify-center ${daysToIrps <= 5 ? 'bg-rose-100 text-rose-600' : 'bg-slate-200 text-slate-600'}`}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+            </div>
           </div>
         </div>
 

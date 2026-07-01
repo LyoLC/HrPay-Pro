@@ -3,6 +3,9 @@ import { getAuth, GoogleAuthProvider, onAuthStateChanged, User, signInWithPopup 
 import firebaseConfig from '../../firebase-applet-config.json';
 import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getAnalytics, isSupported as isAnalyticsSupported } from 'firebase/analytics';
+import { getPerformance } from 'firebase/performance';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
@@ -10,6 +13,34 @@ export const db = initializeFirestore(app, {
   localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
 }, firebaseConfig.firestoreDatabaseId);
 export const storage = getStorage(app);
+
+// Initialize App Check (replace RECAPTCHA_SITE_KEY with your actual key in production)
+if (typeof window !== 'undefined') {
+  try {
+    if (import.meta.env.DEV) {
+      (window as any).FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(import.meta.env.VITE_RECAPTCHA_SITE_KEY || 'RECAPTCHA_SITE_KEY'),
+      isTokenAutoRefreshEnabled: true
+    });
+  } catch (e) {
+    console.warn('App Check initialization failed', e);
+  }
+}
+
+// Initialize Analytics & Performance conditionally (browser only)
+export let analytics: any = null;
+export let performance: any = null;
+
+if (typeof window !== 'undefined') {
+  isAnalyticsSupported().then(yes => yes ? analytics = getAnalytics(app) : null);
+  try {
+    performance = getPerformance(app);
+  } catch (e) {
+    console.warn('Performance monitoring initialization failed', e);
+  }
+}
 
 export const googleAuthProvider = new GoogleAuthProvider();
 // Add all requested scopes for Gmail:

@@ -89,3 +89,10 @@ export const uploadFileToStorage = async (path: string, file: File): Promise<str
   await uploadBytes(storageRef, file);
   return await getDownloadURL(storageRef);
 };
+
+export const uploadBackupToStorage = async (path: string, data: any): Promise<string> => {
+  const storageRef = ref(storage, path);
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  await uploadBytes(storageRef, blob);
+  return await getDownloadURL(storageRef);
+};
