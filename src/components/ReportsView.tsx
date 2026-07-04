@@ -243,7 +243,7 @@ export default function ReportsView({
               className="bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 cursor-pointer"
             >
               <Download className="w-3.5 h-3.5" />
-              <span>CSV</span>
+              <span>Download Report as CSV</span>
             </button>
 
             <button

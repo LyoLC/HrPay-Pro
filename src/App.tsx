@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { AnimatePresence, motion } from 'motion/react';
 import { 
   User, Employee, Contract_Doc, AttendanceRecord, ActivityTask, 
   PayrollProcessed, CompanySettings, MenuSection, UserRole, CustomReportConfig
@@ -628,6 +629,7 @@ export default function App() {
             onAddAttendanceRecord={handleAddAttendanceRecord}
             onUpdateAttendanceRecord={handleUpdateAttendanceRecord}
             currentUserRole={currentUser.perfil}
+            currentUser={currentUser}
           />
         );
       case 'Atividades':
@@ -900,8 +902,8 @@ export default function App() {
             </div>
             
             {/* Search Results Dropdown */}
-            {showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+            <AnimatePresence>{showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.15 }} className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 origin-top">
                 <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-2">
                   <select
                     className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
@@ -983,8 +985,9 @@ export default function App() {
                     )}
                   </div>
                 )}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
 
           <div className="flex items-center space-x-3">
@@ -1133,8 +1136,8 @@ export default function App() {
               }}
             />
             {/* Search Results Dropdown */}
-            {showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50">
+            <AnimatePresence>{showSearchResults && (globalSearchQuery.trim() !== '' || searchDepartmentFilter !== '' || searchSalaryFilter !== '') && (
+              <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.15 }} className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden z-50 origin-top">
                 <div className="p-2 border-b border-slate-100 bg-slate-50 flex gap-2">
                   <select
                     className="flex-1 text-[10px] p-1.5 rounded-lg border border-slate-200 bg-white font-medium text-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer"
@@ -1216,8 +1219,9 @@ export default function App() {
                     )}
                   </div>
                 )}
-              </div>
+              </motion.div>
             )}
+            </AnimatePresence>
           </div>
         </div>
 

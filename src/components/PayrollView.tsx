@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Employee, PayrollProcessed, AttendanceRecord, UserRole, CompanySettings } from '../types';
 import { processFullPayroll } from '../utils/calculations';
 import { downloadCSV } from '../utils/csv';
-import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw, Download, ChevronDown, ChevronUp } from 'lucide-react';
+import { DollarSign, Printer, CheckCircle, Calculator, FileText, AlertCircle, Sparkles, SlidersHorizontal, RefreshCcw, Download, ChevronDown, ChevronUp, Loader2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, Cell } from 'recharts';
 
@@ -51,6 +51,8 @@ export default function PayrollView({
   const [selectedExportColumns, setSelectedExportColumns] = useState<string[]>(EXPORT_COLUMNS.map(c => c.id));
   const [showExportColDropdown, setShowExportColDropdown] = useState(false);
   const [expandedRowId, setExpandedRowId] = useState<string | null>(null);
+  const [isExportingCSV, setIsExportingCSV] = useState(false);
+  const [isExportingHistoryCSV, setIsExportingHistoryCSV] = useState(false);
 
   // processing drawer modal state
   const [processingEmp, setProcessingEmp] = useState<Employee | null>(null);
@@ -172,32 +174,71 @@ export default function PayrollView({
     return new Intl.NumberFormat('pt-MZ', { style: 'currency', currency: 'MZN' }).format(val).replace('MZN', 'MT');
   };
 
-  const handleExportCSV = () => {
-    const activeColumns = EXPORT_COLUMNS.filter(col => selectedExportColumns.includes(col.id));
-    const headers = activeColumns.map(col => col.label).join(',');
+  const handleExportCSV = async () => {
+    setIsExportingCSV(true);
+    // Yield to let React render the loading spinner
+    await new Promise(resolve => setTimeout(resolve, 800));
 
-    const rows = activeEmployees.map(emp => {
-      const pay = getProcessedRecord(emp.id);
-      const { unjustifiedFaltas, totalOvertimeHours } = getAutomatedAttendanceMetrics(emp.id);
+    try {
+      const activeColumns = EXPORT_COLUMNS.filter(col => selectedExportColumns.includes(col.id));
+      const headers = activeColumns.map(col => col.label).join(',');
+
+      const rows = activeEmployees.map(emp => {
+        const pay = getProcessedRecord(emp.id);
+        const { unjustifiedFaltas, totalOvertimeHours } = getAutomatedAttendanceMetrics(emp.id);
+        
+        const dataMap: Record<string, string> = {
+          nome: `"${emp.nome}"`,
+          base: emp.salarioBase.toFixed(2),
+          faltas: unjustifiedFaltas.toString(),
+          horasExtras: totalOvertimeHours.toString(),
+          bruto: pay ? pay.totalBruto.toFixed(2) : '0.00',
+          inss: pay ? pay.impostos.inssTrabalhador.toFixed(2) : '0.00',
+          irps: pay ? pay.impostos.irps.toFixed(2) : '0.00',
+          liquido: pay ? pay.salarioLiquido.toFixed(2) : '0.00',
+          estado: pay ? (pay.status === 'Pago' || pay.pago ? 'Pago' : pay.status === 'Aprovado' ? 'Aprovado' : 'Pendente Revisao') : 'Nao Calculado'
+        };
+
+        return activeColumns.map(col => dataMap[col.id]).join(',');
+      });
+
+      const csvContent = [headers, ...rows].join('\n');
+      const filename = `Folha_Salarial_${selectedMonth.toString().padStart(2, '0')}_${selectedYear}.csv`;
+      downloadCSV(csvContent, filename);
+    } finally {
+      setIsExportingCSV(false);
+    }
+  };
+
+  const handleExportHistoryCSV = async () => {
+    setIsExportingHistoryCSV(true);
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    try {
+      const headers = "Data Processamento,Mes/Ano,Funcionario,Salario Base,Total Bruto,INSS,IRPS,Liquido,Estado";
       
-      const dataMap: Record<string, string> = {
-        nome: `"${emp.nome}"`,
-        base: emp.salarioBase.toFixed(2),
-        faltas: unjustifiedFaltas.toString(),
-        horasExtras: totalOvertimeHours.toString(),
-        bruto: pay ? pay.totalBruto.toFixed(2) : '0.00',
-        inss: pay ? pay.impostos.inssTrabalhador.toFixed(2) : '0.00',
-        irps: pay ? pay.impostos.irps.toFixed(2) : '0.00',
-        liquido: pay ? pay.salarioLiquido.toFixed(2) : '0.00',
-        estado: pay ? (pay.status === 'Pago' || pay.pago ? 'Pago' : pay.status === 'Aprovado' ? 'Aprovado' : 'Pendente Revisao') : 'Nao Calculado'
-      };
+      const rows = payrollHistory.map(pay => {
+        const emp = employees.find(e => e.id === pay.funcionarioId);
+        const empName = emp ? emp.nome : 'Desconhecido';
+        
+        return [
+          pay.dataProcessamento ? new Date(pay.dataProcessamento).toLocaleDateString('pt-MZ') : '',
+          `${pay.mes.toString().padStart(2, '0')}/${pay.ano}`,
+          `"${empName}"`,
+          pay.salarioBase.toFixed(2),
+          pay.totalBruto.toFixed(2),
+          pay.impostos.inssTrabalhador.toFixed(2),
+          pay.impostos.irps.toFixed(2),
+          pay.salarioLiquido.toFixed(2),
+          pay.status || 'Processado'
+        ].join(',');
+      });
 
-      return activeColumns.map(col => dataMap[col.id]).join(',');
-    });
-
-    const csvContent = [headers, ...rows].join('\n');
-    const filename = `Folha_Salarial_${selectedMonth.toString().padStart(2, '0')}_${selectedYear}.csv`;
-    downloadCSV(csvContent, filename);
+      const csvContent = [headers, ...rows].join('\n');
+      downloadCSV(csvContent, 'Historico_Remuneracoes_Global.csv');
+    } finally {
+      setIsExportingHistoryCSV(false);
+    }
   };
 
   const preview = previewCalculation();
@@ -278,11 +319,35 @@ export default function PayrollView({
             )}
           </div>
           <button
-            onClick={handleExportCSV}
-            className="bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+            onClick={handleExportHistoryCSV}
+            disabled={isExportingHistoryCSV}
+            className="bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-70 disabled:cursor-not-allowed font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
           >
-            <Download className="w-4 h-4" />
-            <span>Exportar CSV</span>
+            {isExportingHistoryCSV ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{isExportingHistoryCSV ? 'Exportando...' : 'Exportar Histórico CSV'}</span>
+          </button>
+          <button
+            onClick={handleExportCSV}
+            disabled={isExportingCSV}
+            className="bg-slate-100 text-slate-700 hover:bg-slate-200 disabled:opacity-70 disabled:cursor-not-allowed font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+          >
+            {isExportingCSV ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Download className="w-4 h-4" />
+            )}
+            <span>{isExportingCSV ? 'Exportando...' : 'Exportar CSV'}</span>
+          </button>
+          <button
+            onClick={() => window.print()}
+            className="bg-slate-100 text-slate-700 hover:bg-slate-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer print:hidden"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Baixar PDF</span>
           </button>
           <button
             onClick={() => setShowSimulator(true)}

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Employee, Contract_Doc, AttendanceRecord, PayrollProcessed, UserRole, ActivityTask, CompanySettings } from '../types';
-import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2, Plus, X, ClipboardList, Clock } from 'lucide-react';
+import { Users, CreditCard, Calendar, Award, AlertTriangle, Building2, TrendingUp, TrendingDown, ArrowUpRight, Cake, CheckCircle2, Plus, X, ClipboardList, Clock, BarChart3 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, LineChart, Line, CartesianGrid } from 'recharts';
 
 interface DashboardViewProps {
@@ -193,14 +193,109 @@ export default function DashboardView({
   // Pending Payroll Approvals (status is 'Pendente Revisão' or missing/falsy pago without 'Aprovado'/'Pago')
   const pendingPayrollApprovals = payrollHistory.filter(p => p.status === 'Pendente Revisão' || (!p.status && !p.pago)).length;
 
-  // Monthly Payroll Trend Data
-  const monthlyPayrollTrend = Array.from({ length: 12 }, (_, i) => {
-    const monthIndex = i + 1;
-    const monthLabel = new Date(currentYear, i, 1).toLocaleString('pt-MZ', { month: 'short' }).replace('.', '');
-    const monthPayroll = payrollHistory.filter(p => p.ano === currentYear && p.mes === monthIndex);
+  // Tasks Overdue
+  const tasksOverdue = tasks.filter(t => {
+    if (t.estado === 'Concluída') return false;
+    if (!t.prazo) return false;
+    return new Date(t.prazo).getTime() < today.getTime();
+  }).length;
+
+  // Linear Regression for 3-Month Projection
+  const historicalMonthsMap = new Map<string, number>();
+  payrollHistory.forEach(p => {
+    const key = `${p.ano}-${p.mes.toString().padStart(2, '0')}`;
+    historicalMonthsMap.set(key, (historicalMonthsMap.get(key) || 0) + p.totalBruto);
+  });
+  
+  const sortedHistoricalKeys = Array.from(historicalMonthsMap.keys()).sort();
+  const regressionPoints = sortedHistoricalKeys.map((key, index) => ({
+    x: index,
+    y: historicalMonthsMap.get(key) || 0,
+    year: parseInt(key.split('-')[0]),
+    month: parseInt(key.split('-')[1])
+  }));
+
+  let slopeM = 0;
+  let interceptB = 0;
+  if (regressionPoints.length >= 2) {
+    const n = regressionPoints.length;
+    const sumX = regressionPoints.reduce((sum, p) => sum + p.x, 0);
+    const sumY = regressionPoints.reduce((sum, p) => sum + p.y, 0);
+    const sumXY = regressionPoints.reduce((sum, p) => sum + p.x * p.y, 0);
+    const sumX2 = regressionPoints.reduce((sum, p) => sum + p.x * p.x, 0);
+
+    slopeM = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    interceptB = (sumY - slopeM * sumX) / n;
+  } else if (regressionPoints.length === 1) {
+    interceptB = regressionPoints[0].y;
+  }
+
+  // Generate 12 months data: 9 months historical + 3 months projected
+  const trendAndProjectionData = Array.from({ length: 12 }, (_, i) => {
+    let monthOffset = i - 8; // index 8 is the latestProcessedMonth (so 9 months of history: 0 to 8)
+    let mth = latestProcessedMonth + monthOffset;
+    let yr = currentYear;
+    
+    while (mth <= 0) {
+      mth += 12;
+      yr -= 1;
+    }
+    while (mth > 12) {
+      mth -= 12;
+      yr += 1;
+    }
+    
+    const monthLabel = new Date(yr, mth - 1, 1).toLocaleString('pt-MZ', { month: 'short' }).replace('.', '');
+    const name = `${monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}/${yr.toString().slice(-2)}`;
+    
+    const isProjected = monthOffset > 0;
+    
+    if (isProjected) {
+      const latestKey = `${currentYear}-${latestProcessedMonth.toString().padStart(2, '0')}`;
+      const latestIndex = sortedHistoricalKeys.indexOf(latestKey);
+      
+      let projectedY = 0;
+      if (latestIndex !== -1) {
+        const projectedX = latestIndex + monthOffset;
+        projectedY = Math.max(0, slopeM * projectedX + interceptB);
+      } else {
+        projectedY = interceptB; // Fallback
+      }
+      
+      return {
+        name,
+        total: null,
+        projected: projectedY
+      };
+    } else {
+      const monthPayroll = payrollHistory.filter(p => p.ano === yr && p.mes === mth);
+      const totalMes = monthPayroll.reduce((sum, p) => sum + p.totalBruto, 0);
+      return {
+        name,
+        total: totalMes,
+        projected: null
+      };
+    }
+  });
+
+  // Connect the projected line from the last actual point
+  if (trendAndProjectionData[8]) {
+    trendAndProjectionData[8].projected = trendAndProjectionData[8].total;
+  }
+
+  // Last 6 Months Payroll Trend Data
+  const last6MonthsTrend = Array.from({ length: 6 }, (_, i) => {
+    let m = latestProcessedMonth - 5 + i;
+    let y = currentYear;
+    if (m <= 0) {
+      m += 12;
+      y -= 1;
+    }
+    const monthLabel = new Date(y, m - 1, 1).toLocaleString('pt-MZ', { month: 'short' }).replace('.', '');
+    const monthPayroll = payrollHistory.filter(p => p.ano === y && p.mes === m);
     const totalMes = monthPayroll.reduce((sum, p) => sum + p.totalBruto, 0);
     return {
-      name: monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1),
+      name: `${monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1)}/${y.toString().slice(-2)}`,
       total: totalMes,
     };
   });
@@ -234,13 +329,13 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Quick Summary Cards (Headcount, Pending Payroll, Expiries) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      {/* Quick Summary Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
           <div className="space-y-1">
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Headcount</p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Total Active Employees</p>
             <div className="flex items-baseline space-x-2">
-              <p className="text-3xl font-black text-slate-800">{totalEmployees}</p>
+              <p className="text-3xl font-black text-slate-800">{activeEmployees}</p>
               <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md">Ativos</span>
             </div>
           </div>
@@ -251,7 +346,7 @@ export default function DashboardView({
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
           <div className="space-y-1">
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Pending Payroll Approvals</p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Payroll Pending Review</p>
             <div className="flex items-baseline space-x-2">
               <p className="text-3xl font-black text-slate-800">{pendingPayrollApprovals}</p>
               <span className="text-xs font-medium text-amber-600 bg-amber-50 px-2 py-0.5 rounded-md">Aguardando</span>
@@ -264,7 +359,20 @@ export default function DashboardView({
 
         <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
           <div className="space-y-1">
-            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Upcoming Expiries</p>
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Tasks Overdue</p>
+            <div className="flex items-baseline space-x-2">
+              <p className="text-3xl font-black text-slate-800">{tasksOverdue}</p>
+              <span className="text-xs font-medium text-red-600 bg-red-50 px-2 py-0.5 rounded-md">Atrasadas</span>
+            </div>
+          </div>
+          <div className="w-14 h-14 rounded-full bg-red-50 border border-red-100 flex items-center justify-center text-red-600">
+            <ClipboardList className="w-6 h-6" />
+          </div>
+        </div>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between hover:shadow-md transition-shadow">
+          <div className="space-y-1">
+            <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">Upcoming Contract Expirations</p>
             <div className="flex items-baseline space-x-2">
               <p className="text-3xl font-black text-slate-800">{expiringContracts.length}</p>
               <span className="text-xs font-medium text-rose-600 bg-rose-50 px-2 py-0.5 rounded-md">Este mês</span>
@@ -494,45 +602,95 @@ export default function DashboardView({
         </div>
       </div>
 
-      {/* Payroll Trends Chart */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
-        <div className="flex justify-between items-center pb-2 border-b border-slate-50">
-          <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-indigo-700">
-            <TrendingUp className="w-4 h-4" />
-            <span>Tendência Anual de Despesas Salariais ({currentYear})</span>
-          </h3>
-          <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
-            Bruto Processado
-          </span>
+      {/* Payroll Trends Charts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-indigo-700">
+              <TrendingUp className="w-4 h-4" />
+              <span>Tendência e Projeção (12 Meses)</span>
+            </h3>
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+              Real vs Previsto
+            </span>
+          </div>
+          <div className="h-64 w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={trendAndProjectionData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis 
+                  tick={{ fontSize: 10, fill: '#64748b' }} 
+                  axisLine={false} 
+                  tickLine={false}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip 
+                  cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  labelStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', marginBottom: '4px' }}
+                  itemStyle={{ fontSize: '12px', fontWeight: 'bold' }}
+                  formatter={(value: number, name: string) => [formatMT(value), name === 'projected' ? 'Despesa Projetada' : 'Despesa Salarial']}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="total" 
+                  stroke="#10b981" 
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#047857', stroke: '#fff', strokeWidth: 2 }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="projected" 
+                  stroke="#8b5cf6" 
+                  strokeWidth={3}
+                  strokeDasharray="5 5"
+                  dot={{ r: 4, fill: '#8b5cf6', strokeWidth: 0 }}
+                  activeDot={{ r: 6, fill: '#6d28d9', stroke: '#fff', strokeWidth: 2 }}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
         </div>
-        <div className="h-64 w-full mt-4">
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={monthlyPayrollTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
-              <YAxis 
-                tick={{ fontSize: 10, fill: '#64748b' }} 
-                axisLine={false} 
-                tickLine={false}
-                tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
-              />
-              <Tooltip 
-                cursor={{ stroke: '#cbd5e1', strokeWidth: 1, strokeDasharray: '4 4' }}
-                contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
-                labelStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', marginBottom: '4px' }}
-                itemStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#10b981' }}
-                formatter={(value: number) => [formatMT(value), 'Despesa Salarial']}
-              />
-              <Line 
-                type="monotone" 
-                dataKey="total" 
-                stroke="#10b981" 
-                strokeWidth={3}
-                dot={{ r: 4, fill: '#10b981', strokeWidth: 0 }}
-                activeDot={{ r: 6, fill: '#047857', stroke: '#fff', strokeWidth: 2 }}
-              />
-            </LineChart>
-          </ResponsiveContainer>
+
+        <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm space-y-4">
+          <div className="flex justify-between items-center pb-2 border-b border-slate-50">
+            <h3 className="font-bold text-slate-800 text-sm flex items-center space-x-2 text-indigo-700">
+              <BarChart3 className="w-4 h-4" />
+              <span>Despesas Salariais (Últimos 6 Meses)</span>
+            </h3>
+            <span className="text-[10px] bg-indigo-50 text-indigo-700 font-bold px-2 py-0.5 rounded-full">
+              Bruto Processado
+            </span>
+          </div>
+          <div className="h-64 w-full mt-4">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={last6MonthsTrend} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#64748b' }} axisLine={false} tickLine={false} />
+                <YAxis 
+                  tick={{ fontSize: 10, fill: '#64748b' }} 
+                  axisLine={false} 
+                  tickLine={false}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <Tooltip 
+                  cursor={{ fill: '#f8fafc' }}
+                  contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }}
+                  labelStyle={{ fontSize: '11px', fontWeight: 'bold', color: '#334155', marginBottom: '4px' }}
+                  itemStyle={{ fontSize: '12px', fontWeight: 'bold', color: '#8b5cf6' }}
+                  formatter={(value: number) => [formatMT(value), 'Despesa Salarial']}
+                />
+                <Bar 
+                  dataKey="total" 
+                  fill="#8b5cf6" 
+                  radius={[4, 4, 0, 0]} 
+                  maxBarSize={50}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

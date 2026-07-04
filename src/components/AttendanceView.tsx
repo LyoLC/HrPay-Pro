@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Employee, AttendanceRecord, UserRole } from '../types';
-import { Calendar, CheckCircle, Clock, XCircle, AlertCircle, Plus, Sparkles, Filter, ChevronRight, Download } from 'lucide-react';
+import { Employee, AttendanceRecord, UserRole, User } from '../types';
+import { Calendar, CheckCircle, Clock, XCircle, AlertCircle, Plus, Sparkles, Filter, ChevronRight, Download, QrCode, X } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { Scanner } from '@yudiel/react-qr-scanner';
 
 interface AttendanceViewProps {
   attendance: AttendanceRecord[];
@@ -10,6 +11,7 @@ interface AttendanceViewProps {
   onAddAttendanceRecord: (record: AttendanceRecord) => void;
   onUpdateAttendanceRecord: (id: string, updated: Partial<AttendanceRecord>) => void;
   currentUserRole: UserRole;
+  currentUser: User;
 }
 
 export default function AttendanceView({
@@ -17,7 +19,8 @@ export default function AttendanceView({
   employees,
   onAddAttendanceRecord,
   onUpdateAttendanceRecord,
-  currentUserRole
+  currentUserRole,
+  currentUser
 }: AttendanceViewProps) {
   const activeEmployees = employees.filter(e => e.estado === 'Ativo');
   
@@ -28,8 +31,39 @@ export default function AttendanceView({
 
   // Filter state for summary
   const [selectedEmployeeSummaryId, setSelectedEmployeeSummaryId] = useState<string>(activeEmployees[0]?.id || '');
+  const [showQRScanner, setShowQRScanner] = useState(false);
+  const [scanResult, setScanResult] = useState<string | null>(null);
 
   const dateString = `${selectedYear}-${selectedMonth.toString().padStart(2, '0')}-${selectedDay.toString().padStart(2, '0')}`;
+
+  const handleQRScan = (text: string) => {
+    // Assuming the QR code contains a specific string like "HRPAY_PRO_CHECKIN_2026"
+    if (text) {
+      setScanResult('Sucesso! Ponto registado.');
+      
+      const empId = currentUser.funcionarioId || activeEmployees[0]?.id; // Fallback for simulation
+      if (empId) {
+        const existing = getRecordForEmployee(empId);
+        if (existing) {
+          onUpdateAttendanceRecord(existing.id, { presente: 'Presente' });
+        } else {
+          onAddAttendanceRecord({
+            id: `att_${empId}_${dateString}`,
+            funcionarioId: empId,
+            data: dateString,
+            presente: 'Presente',
+            horasExtras: 0,
+            comentario: 'Registado via QR Code'
+          });
+        }
+      }
+      
+      setTimeout(() => {
+        setShowQRScanner(false);
+        setScanResult(null);
+      }, 2000);
+    }
+  };
 
   // Find records for the currently selected day
   const dailyRecords = attendance.filter(a => a.data === dateString);
@@ -177,7 +211,16 @@ export default function AttendanceView({
           <h2 className="text-xl font-bold text-slate-800">Mapa de Assiduidade e Presenças</h2>
           <p className="text-xs text-slate-500 font-medium">Controlo diário de assiduidade, justificação de faltas administrativas e horas extraordinárias acumuladas</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {currentUserRole === UserRole.FUNCIONARIO && (
+            <button
+              onClick={() => setShowQRScanner(true)}
+              className="bg-emerald-600 text-white hover:bg-emerald-700 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>Picar Ponto (QR)</span>
+            </button>
+          )}
           <button
             onClick={handleExportCSV}
             className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 font-bold px-4 py-2 rounded-xl text-xs flex items-center space-x-2 transition-colors cursor-pointer"
@@ -194,6 +237,38 @@ export default function AttendanceView({
           </button>
         </div>
       </div>
+
+      {showQRScanner && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm flex flex-col items-center relative shadow-2xl">
+            <button 
+              onClick={() => setShowQRScanner(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <h3 className="font-bold text-slate-800 text-lg mb-2">Registo de Presença</h3>
+            <p className="text-sm text-slate-500 mb-6 text-center">Aponte a câmera para o QR Code da empresa para marcar o seu ponto de entrada/saída.</p>
+            
+            {scanResult ? (
+              <div className="flex flex-col items-center justify-center space-y-3 py-8">
+                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
+                  <CheckCircle className="w-8 h-8 text-emerald-600" />
+                </div>
+                <p className="font-bold text-emerald-700">{scanResult}</p>
+              </div>
+            ) : (
+              <div className="w-full aspect-square bg-black rounded-xl overflow-hidden shadow-inner">
+                <Scanner 
+                  onScan={(result) => handleQRScan(result[0].rawValue)} 
+                  onError={(error) => console.log(error?.message)}
+                />
+              </div>
+            )}
+            <p className="text-xs text-slate-400 mt-4 text-center">Permita o acesso à câmera para utilizar a funcionalidade.</p>
+          </div>
+        </div>
+      )}
 
       {/* Primary Layout Split: Calendar & Register Table + Side Summary Card */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -20,6 +20,7 @@ export default function ActivitiesView({
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedTaskDetails, setSelectedTaskDetails] = useState<ActivityTask | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortBy, setSortBy] = useState<'Date' | 'Priority'>('Date');
 
   // Form states
   const [formTitulo, setFormTitulo] = useState('');
@@ -99,10 +100,20 @@ export default function ActivitiesView({
     return matchesTitle || matchesEmp;
   });
 
+  const sortedTasks = [...filteredTasks].sort((a, b) => {
+    if (sortBy === 'Priority') {
+      const pMap = { High: 3, Medium: 2, Low: 1 };
+      const pDiff = pMap[b.priority] - pMap[a.priority];
+      if (pDiff !== 0) return pDiff;
+      return new Date(a.prazo).getTime() - new Date(b.prazo).getTime();
+    }
+    return new Date(a.prazo).getTime() - new Date(b.prazo).getTime();
+  });
+
   const totalTasks = filteredTasks.length;
-  const completedCount = filteredTasks.filter(t => t.estado === 'Concluída').length;
-  const progressCount = filteredTasks.filter(t => t.estado === 'Em Progresso').length;
-  const pendingCount = filteredTasks.filter(t => t.estado === 'Pendente').length;
+  const completedCount = sortedTasks.filter(t => t.estado === 'Concluída').length;
+  const progressCount = sortedTasks.filter(t => t.estado === 'Em Progresso').length;
+  const pendingCount = sortedTasks.filter(t => t.estado === 'Pendente').length;
   const completionPercentage = totalTasks > 0 ? Math.round((completedCount / totalTasks) * 100) : 0;
 
   const getPriorityColor = (prio: TaskPriority) => {
@@ -121,6 +132,14 @@ export default function ActivitiesView({
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'Date' | 'Priority')}
+            className="bg-white border border-slate-200 rounded-xl py-2 px-3 text-xs text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer"
+          >
+            <option value="Date">Ordenar por Data</option>
+            <option value="Priority">Ordenar por Prioridade</option>
+          </select>
           <div className="relative flex-1 sm:flex-none sm:w-64">
             <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
             <input
@@ -192,12 +211,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Pendente</h3>
             </div>
             <span className="bg-slate-200 text-slate-700 px-2 py-0.5 rounded text-[10px] font-bold">
-              {filteredTasks.filter(t => t.estado === 'Pendente').length}
+              {sortedTasks.filter(t => t.estado === 'Pendente').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {filteredTasks.filter(t => t.estado === 'Pendente').map(task => (
+            {sortedTasks.filter(t => t.estado === 'Pendente').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
@@ -219,12 +238,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Em Progresso</h3>
             </div>
             <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded text-[10px] font-bold">
-              {filteredTasks.filter(t => t.estado === 'Em Progresso').length}
+              {sortedTasks.filter(t => t.estado === 'Em Progresso').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {filteredTasks.filter(t => t.estado === 'Em Progresso').map(task => (
+            {sortedTasks.filter(t => t.estado === 'Em Progresso').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
@@ -246,12 +265,12 @@ export default function ActivitiesView({
               <h3 className="font-extrabold text-xs uppercase tracking-wide">Concluída</h3>
             </div>
             <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded text-[10px] font-bold">
-              {filteredTasks.filter(t => t.estado === 'Concluída').length}
+              {sortedTasks.filter(t => t.estado === 'Concluída').length}
             </span>
           </div>
 
           <div className="space-y-3 min-h-[300px]">
-            {filteredTasks.filter(t => t.estado === 'Concluída').map(task => (
+            {sortedTasks.filter(t => t.estado === 'Concluída').map(task => (
               <TaskTile
                 key={task.id}
                 task={task}
