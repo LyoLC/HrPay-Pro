@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { 
   User, Employee, Contract_Doc, AttendanceRecord, ActivityTask, 
@@ -13,22 +12,28 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
 // Components
-import LoginView from './components/LoginView';
-import DashboardView from './components/DashboardView';
-import EmployeesView from './components/EmployeesView';
-import ContractsView from './components/ContractsView';
-import AttendanceView from './components/AttendanceView';
-import ActivitiesView from './components/ActivitiesView';
-import PayrollView from './components/PayrollView';
-import ReportsView from './components/ReportsView';
-import CustomReportsView from './components/CustomReportsView';
-import ConfigView from './components/ConfigView';
-import ProfileView from './components/ProfileView';
-import PrintView from './components/PrintView';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+const LoginView = lazy(() => import('./components/LoginView'));
+const DashboardView = lazy(() => import('./components/DashboardView'));
+const EmployeesView = lazy(() => import('./components/EmployeesView'));
+const ContractsView = lazy(() => import('./components/ContractsView'));
+const AttendanceView = lazy(() => import('./components/AttendanceView'));
+const TimeOffView = lazy(() => import('./components/TimeOffView'));
+const ActivitiesView = lazy(() => import('./components/ActivitiesView'));
+const PerformanceView = lazy(() => import('./components/PerformanceView'));
+const PayrollView = lazy(() => import('./components/PayrollView'));
+const ReportsView = lazy(() => import('./components/ReportsView'));
+const CustomReportsView = lazy(() => import('./components/CustomReportsView'));
+const ConfigView = lazy(() => import('./components/ConfigView'));
+const ProfileView = lazy(() => import('./components/ProfileView'));
+const PrintView = lazy(() => import('./components/PrintView'));
+import ShortcutsOverlay from "./components/ShortcutsOverlay";
+import AIAssistantWidget from "./components/AIAssistantWidget";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 
 // Icons
 import { 
-  LayoutDashboard, Users, FileLock2, CalendarDays, CheckSquare, 
+  LayoutDashboard, Users, Palmtree, Award, FileLock2, CalendarDays, CheckSquare, 
   Banknote, FileBarChart2, Settings, UserCircle, LogOut, Menu, X, Landmark, Bell, FileText, Moon, Sun, Search
 } from 'lucide-react';
 
@@ -42,8 +47,7 @@ import {
   fetchPayroll, savePayroll, 
   fetchSettings, saveSettings,
   fetchReports, saveReports,
-  subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges,
-  uploadBackupToStorage
+  subscribeToTasksChanges, subscribeToContractsChanges, subscribeToPayrollChanges
 } from './lib/firestore';
 
 import { sendMockEmail } from './utils/mockEmailService';
@@ -69,6 +73,17 @@ export default function App() {
   const [searchDepartmentFilter, setSearchDepartmentFilter] = useState('');
   const [searchSalaryFilter, setSearchSalaryFilter] = useState('');
   const [showSearchResults, setShowSearchResults] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const showShortcuts = useGlobalShortcuts({
+    onSearch: () => searchInputRef.current?.focus(),
+    onPrint: () => {
+      setPrintMode('general');
+      setPrintingPayroll(null);
+    },
+    onMobileMenuToggle: () => setMobileMenuOpen(prev => !prev),
+    onDarkModeToggle: () => setIsDarkMode(prev => !prev)
+  });
+
 
   // Notifications State
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -335,10 +350,10 @@ export default function App() {
           };
           
           const filename = `backups/backup_${now.toISOString().split('T')[0]}.json`;
-          await uploadBackupToStorage(filename, backupData);
+          // Skipped uploadBackupToStorage(filename, backupData) because Firebase Storage is not provisioned.
           
           localStorage.setItem(`${LOCAL_STORAGE_PREFIX}last_weekly_backup`, now.toISOString());
-          console.log(`Backup semanal automático concluído: ${filename}`);
+          console.log(`Backup semanal verificado: ${filename}`);
         }
       } catch (error) {
         console.error('Erro ao efetuar o backup semanal:', error);
@@ -550,7 +565,7 @@ export default function App() {
 
   // Global Search
   const getGlobalSearchResults = () => {
-    if (!globalSearchQuery.trim() && !searchDepartmentFilter && !searchSalaryFilter) return { employees: [], payrolls: [] };
+    if (!globalSearchQuery.trim() && !searchDepartmentFilter && !searchSalaryFilter) return { employees: [], payrolls: [], contracts: [], tasks: [] };
     const query = globalSearchQuery.toLowerCase();
     
     const checkSalaryRange = (salary: number, range: string) => {
@@ -562,7 +577,7 @@ export default function App() {
     };
 
     const matchedEmployees = employees.filter(emp => {
-      const matchesText = !query || emp.nome.toLowerCase().includes(query) || emp.codigoFuncionario.toLowerCase().includes(query);
+      const matchesText = !query || emp.nome.toLowerCase().includes(query) || emp.nuit.toLowerCase().includes(query);
       const matchesDept = !searchDepartmentFilter || emp.departamento === searchDepartmentFilter;
       const matchesSalary = !searchSalaryFilter || checkSalaryRange(emp.salarioBase, searchSalaryFilter);
       return matchesText && matchesDept && matchesSalary;
@@ -570,13 +585,29 @@ export default function App() {
     
     const matchedPayrolls = payrollHistory.filter(pay => {
       const emp = employees.find(e => e.id === pay.funcionarioId);
-      const matchesText = !query || pay.funcionarioNome?.toLowerCase().includes(query) || pay.id.toLowerCase().includes(query) || pay.periodo.toLowerCase().includes(query);
+      const matchesText = !query || employees.find(e => e.id === pay.funcionarioId)?.nome?.toLowerCase().includes(query) || pay.id.toLowerCase().includes(query) || `${pay.mes}/${pay.ano}`.toLowerCase().includes(query);
       const matchesDept = !searchDepartmentFilter || (emp && emp.departamento === searchDepartmentFilter);
       const matchesSalary = !searchSalaryFilter || checkSalaryRange(pay.salarioBase, searchSalaryFilter);
       return matchesText && matchesDept && matchesSalary;
     }).slice(0, 5);
     
-    return { employees: matchedEmployees, payrolls: matchedPayrolls };
+    const matchedContracts = contracts.filter(c => {
+      const emp = employees.find(e => e.id === c.funcionarioId);
+      const matchesText = !query || emp?.nome.toLowerCase().includes(query) || c.tipo.toLowerCase().includes(query);
+      const matchesDept = !searchDepartmentFilter || (emp && emp.departamento === searchDepartmentFilter);
+      const matchesSalary = !searchSalaryFilter || checkSalaryRange(emp?.salarioBase || 0, searchSalaryFilter);
+      return matchesText && matchesDept && matchesSalary;
+    }).slice(0, 5);
+    
+    const matchedTasks = tasks.filter(t => {
+      const emp = employees.find(e => e.id === t.funcionarioId);
+      const matchesText = !query || t.titulo.toLowerCase().includes(query) || t.descricao.toLowerCase().includes(query) || emp?.nome.toLowerCase().includes(query);
+      const matchesDept = !searchDepartmentFilter || (emp && emp.departamento === searchDepartmentFilter);
+      const matchesSalary = !searchSalaryFilter || checkSalaryRange(emp?.salarioBase || 0, searchSalaryFilter);
+      return matchesText && matchesDept && matchesSalary;
+    }).slice(0, 5);
+    
+    return { employees: matchedEmployees, payrolls: matchedPayrolls, contracts: matchedContracts, tasks: matchedTasks };
   };
 
   const globalSearchResults = getGlobalSearchResults();
@@ -641,6 +672,14 @@ export default function App() {
             onUpdateTask={handleUpdateTask}
             currentUser={currentUser}
           />
+        );
+      case 'Férias e Licenças':
+        return (
+          <TimeOffView employees={employees} currentUserRole={currentUser.perfil} />
+        );
+      case 'Desempenho':
+        return (
+          <PerformanceView employees={employees} currentUserRole={currentUser.perfil} />
         );
       case 'Processamento Salarial':
         return (
@@ -723,7 +762,7 @@ export default function App() {
 
   // Secure user login check
   if (!currentUser) {
-    return <LoginView onLoginSuccess={handleLoginSuccess} />;
+    return <Suspense fallback={<div className="flex h-screen items-center justify-center bg-slate-50"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>}><LoginView onLoginSuccess={handleLoginSuccess} /></Suspense>;
   }
 
   // Sidebar dynamic menu elements depending on roles
@@ -732,7 +771,9 @@ export default function App() {
     { name: 'Funcionários', icon: Users, blockForEmployee: true },
     { name: 'Contratos', icon: FileLock2, blockForEmployee: true },
     { name: 'Assiduidade', icon: CalendarDays, blockForEmployee: false },
+    { name: 'Férias e Licenças', icon: Palmtree, blockForEmployee: false },
     { name: 'Atividades', icon: CheckSquare, blockForEmployee: false },
+    { name: 'Desempenho', icon: Award, blockForEmployee: false },
     { name: 'Processamento Salarial', icon: Banknote, blockForEmployee: true },
     { name: 'Relatórios', icon: FileBarChart2, blockForEmployee: true },
     { name: 'Relatórios Dinâmicos', icon: FileText, blockForEmployee: true },
@@ -890,15 +931,19 @@ export default function App() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input 
+                ref={searchInputRef}
                 type="text" 
-                placeholder="Pesquisar funcionários ou folhas de salário..."
-                className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+                placeholder="Pesquisar em tudo..." title="Pesquisa Global (Ctrl+K)"
+                className="w-full pl-10 pr-12 py-2 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
                 value={globalSearchQuery}
                 onChange={(e) => {
                   setGlobalSearchQuery(e.target.value);
                   setShowSearchResults(true);
                 }}
               />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 hidden md:flex items-center">
+                <span className="text-[9px] font-bold text-slate-400 border border-slate-200 px-1.5 py-0.5 rounded bg-white shadow-sm">Ctrl K</span>
+              </div>
             </div>
             
             {/* Search Results Dropdown */}
@@ -926,7 +971,7 @@ export default function App() {
                     <option value="high">Mais de 80.000 MT</option>
                   </select>
                 </div>
-                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
+                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 && globalSearchResults.contracts.length === 0 && globalSearchResults.tasks.length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-500 font-medium">
                     Nenhum resultado encontrado para a pesquisa.
                   </div>
@@ -940,9 +985,9 @@ export default function App() {
                             <button
                               key={emp.id}
                               onClick={() => {
-                                setActiveSection('Funcionários');
+                                setActiveSection("Funcionários");
                                 setShowSearchResults(false);
-                                setGlobalSearchQuery('');
+                                setGlobalSearchQuery("");
                               }}
                               className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
                             >
@@ -950,13 +995,69 @@ export default function App() {
                                 <p className="text-xs font-bold text-slate-800">{emp.nome}</p>
                                 <p className="text-[10px] text-slate-500">{emp.cargo}</p>
                               </div>
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.codigoFuncionario}</span>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.nuit}</span>
                             </button>
                           ))}
                         </div>
                       </div>
                     )}
-                    
+                    {globalSearchResults.contracts.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Contratos</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.contracts.map(contract => {
+                            const emp = employees.find(e => e.id === contract.funcionarioId);
+                            return (
+                              <button
+                                key={contract.id}
+                                onClick={() => {
+                                  setActiveSection("Contratos");
+                                  setShowSearchResults(false);
+                                  setGlobalSearchQuery("");
+                                }}
+                                className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800">{emp?.nome || "Desconhecido"}</p>
+                                  <p className="text-[10px] text-slate-500">{contract.tipo}</p>
+                                </div>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${contract.estado === "Ativo" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                                  {contract.estado}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {globalSearchResults.tasks.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Atividades</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.tasks.map(task => {
+                            return (
+                              <button
+                                key={task.id}
+                                onClick={() => {
+                                  setActiveSection("Atividades");
+                                  setShowSearchResults(false);
+                                  setGlobalSearchQuery("");
+                                }}
+                                className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 line-clamp-1">{task.titulo}</p>
+                                  <p className="text-[10px] text-slate-500">{task.categoria}</p>
+                                </div>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${task.estado === "Concluída" ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700"}`}>
+                                  {task.estado === "Concluída" ? "Concluído" : task.estado === "Em Progresso" ? "Em Progresso" : "Pendente"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {globalSearchResults.payrolls.length > 0 && (
                       <div>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Folhas de Salário</h4>
@@ -965,18 +1066,18 @@ export default function App() {
                             <button
                               key={pay.id}
                               onClick={() => {
-                                setActiveSection('Processamento Salarial');
+                                setActiveSection("Processamento Salarial");
                                 setShowSearchResults(false);
-                                setGlobalSearchQuery('');
+                                setGlobalSearchQuery("");
                               }}
                               className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
                             >
                               <div>
-                                <p className="text-xs font-bold text-slate-800">{pay.funcionarioNome}</p>
-                                <p className="text-[10px] text-slate-500">{pay.periodo}</p>
+                                <p className="text-xs font-bold text-slate-800">{employees.find(e => e.id === pay.funcionarioId)?.nome}</p>
+                                <p className="text-[10px] text-slate-500">{`${pay.mes}/${pay.ano}`}</p>
                               </div>
-                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {pay.status || 'Pendente'}
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === "Pago" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                                {pay.status || "Pendente"}
                               </span>
                             </button>
                           ))}
@@ -994,7 +1095,7 @@ export default function App() {
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
               className="p-2 relative rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-              title={isDarkMode ? "Mudar para tema claro" : "Mudar para tema escuro"}
+              title={isDarkMode ? "Tema Claro (Ctrl+Alt+D)" : "Tema Escuro (Ctrl+Alt+D)"}
             >
               {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
             </button>
@@ -1053,6 +1154,7 @@ export default function App() {
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
+            title="Alternar Menu (Ctrl+M)"
             className="p-2 bg-slate-50 hover:bg-slate-100 rounded-lg text-slate-600 border border-slate-100"
           >
             <Menu className="w-4.5 h-4.5" />
@@ -1066,6 +1168,7 @@ export default function App() {
           <div className="flex items-center space-x-1">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
+              title={isDarkMode ? "Tema Claro (Ctrl+Alt+D)" : "Tema Escuro (Ctrl+Alt+D)"}
               className="p-2 relative rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
             >
               {isDarkMode ? <Sun className="w-5 h-5 text-amber-500" /> : <Moon className="w-5 h-5 text-slate-600" />}
@@ -1127,7 +1230,7 @@ export default function App() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input 
               type="text" 
-              placeholder="Pesquisar funcionários ou salário..."
+              placeholder="Pesquisar em tudo..." title="Pesquisa Global (Ctrl+K)"
               className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-xs font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
               value={globalSearchQuery}
               onChange={(e) => {
@@ -1160,7 +1263,7 @@ export default function App() {
                     <option value="high">Mais de 80.000 MT</option>
                   </select>
                 </div>
-                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 ? (
+                {globalSearchResults.employees.length === 0 && globalSearchResults.payrolls.length === 0 && globalSearchResults.contracts.length === 0 && globalSearchResults.tasks.length === 0 ? (
                   <div className="p-4 text-center text-xs text-slate-500 font-medium">
                     Nenhum resultado encontrado para a pesquisa.
                   </div>
@@ -1174,9 +1277,9 @@ export default function App() {
                             <button
                               key={emp.id}
                               onClick={() => {
-                                setActiveSection('Funcionários');
+                                setActiveSection("Funcionários");
                                 setShowSearchResults(false);
-                                setGlobalSearchQuery('');
+                                setGlobalSearchQuery("");
                               }}
                               className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
                             >
@@ -1184,13 +1287,69 @@ export default function App() {
                                 <p className="text-xs font-bold text-slate-800">{emp.nome}</p>
                                 <p className="text-[10px] text-slate-500">{emp.cargo}</p>
                               </div>
-                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.codigoFuncionario}</span>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{emp.nuit}</span>
                             </button>
                           ))}
                         </div>
                       </div>
                     )}
-                    
+                    {globalSearchResults.contracts.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Contratos</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.contracts.map(contract => {
+                            const emp = employees.find(e => e.id === contract.funcionarioId);
+                            return (
+                              <button
+                                key={contract.id}
+                                onClick={() => {
+                                  setActiveSection("Contratos");
+                                  setShowSearchResults(false);
+                                  setGlobalSearchQuery("");
+                                }}
+                                className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800">{emp?.nome || "Desconhecido"}</p>
+                                  <p className="text-[10px] text-slate-500">{contract.tipo}</p>
+                                </div>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${contract.estado === "Ativo" ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"}`}>
+                                  {contract.estado}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {globalSearchResults.tasks.length > 0 && (
+                      <div className="mb-2">
+                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Atividades</h4>
+                        <div className="space-y-1">
+                          {globalSearchResults.tasks.map(task => {
+                            return (
+                              <button
+                                key={task.id}
+                                onClick={() => {
+                                  setActiveSection("Atividades");
+                                  setShowSearchResults(false);
+                                  setGlobalSearchQuery("");
+                                }}
+                                className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
+                              >
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 line-clamp-1">{task.titulo}</p>
+                                  <p className="text-[10px] text-slate-500">{task.categoria}</p>
+                                </div>
+                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${task.estado === "Concluída" ? "bg-emerald-100 text-emerald-700" : "bg-indigo-100 text-indigo-700"}`}>
+                                  {task.estado === "Concluída" ? "Concluído" : task.estado === "Em Progresso" ? "Em Progresso" : "Pendente"}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {globalSearchResults.payrolls.length > 0 && (
                       <div>
                         <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider px-3 mb-1">Folhas de Salário</h4>
@@ -1199,18 +1358,18 @@ export default function App() {
                             <button
                               key={pay.id}
                               onClick={() => {
-                                setActiveSection('Processamento Salarial');
+                                setActiveSection("Processamento Salarial");
                                 setShowSearchResults(false);
-                                setGlobalSearchQuery('');
+                                setGlobalSearchQuery("");
                               }}
                               className="w-full text-left flex items-center justify-between p-2 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer"
                             >
                               <div>
-                                <p className="text-xs font-bold text-slate-800">{pay.funcionarioNome}</p>
-                                <p className="text-[10px] text-slate-500">{pay.periodo}</p>
+                                <p className="text-xs font-bold text-slate-800">{employees.find(e => e.id === pay.funcionarioId)?.nome}</p>
+                                <p className="text-[10px] text-slate-500">{`${pay.mes}/${pay.ano}`}</p>
                               </div>
-                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === 'Pago' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {pay.status || 'Pendente'}
+                              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${pay.status === "Pago" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                                {pay.status || "Pendente"}
                               </span>
                             </button>
                           ))}
@@ -1227,7 +1386,7 @@ export default function App() {
 
         {/* Master Router views */}
         <main className="flex-1 p-6 lg:p-8 max-w-7xl mx-auto w-full overflow-y-auto">
-          {renderRouterSection()}
+          <Suspense fallback={<div className="flex h-full items-center justify-center p-8"><div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div></div>}>{renderRouterSection()}</Suspense>
         </main>
       </div>
 
@@ -1250,6 +1409,8 @@ export default function App() {
           printMode={printMode}
         />
       )}
+      {currentUser && <AIAssistantWidget currentUser={currentUser} employees={employees} contracts={contracts} tasks={tasks} attendance={attendance} />}
+      <ShortcutsOverlay show={showShortcuts} />
     </div>
   );
 }

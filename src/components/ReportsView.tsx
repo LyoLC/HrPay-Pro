@@ -9,7 +9,7 @@ interface ReportsViewProps {
   onPrintMultipleSlips?: (payrolls: PayrollProcessed[]) => void;
 }
 
-type ReportTab = 'Folha Salarial' | 'INSS' | 'IRPS' | 'Descontos';
+type ReportTab = 'Folha Salarial' | 'INSS' | 'IRPS' | 'Descontos' | 'Lista de Funcionários';
 
 export default function ReportsView({
   payrollHistory,
@@ -43,9 +43,9 @@ export default function ReportsView({
   const sumNet = paymentsInInterval.reduce((sum, p) => sum + p.salarioLiquido, 0);
 
   // Trigger actual CSV export
-  const handleExportCSV = () => {
+  const handleExportCSV = (format: 'CSV' | 'Excel' = 'CSV') => {
     let csvContent = '';
-    const separator = ',';
+    const separator = format === 'Excel' ? ';' : ',';
 
     if (activeTab === 'Folha Salarial') {
       const headers = ['Funcionário', 'Salário Base (MT)', 'Proventos (MT)', 'Deduções (MT)', 'Líquido (MT)', 'Estado'];
@@ -98,6 +98,19 @@ export default function ReportsView({
         const row = [`"${name}"`, p.faltasDeducao, p.vales, p.impostos.outrosDescontos, totalDescontos];
         csvContent += row.join(separator) + '\n';
       });
+    } else if (activeTab === 'Lista de Funcionários') {
+      const headers = ['Nome', 'Email', 'Cargo', 'Departamento', 'Estado'];
+      csvContent += headers.join(separator) + '\n';
+      employees.forEach(emp => {
+        const row = [
+          `"${emp.nome}"`,
+          `"${emp.email}"`,
+          `"${emp.cargo}"`,
+          `"${emp.departamento}"`,
+          `"${emp.estado}"`
+        ];
+        csvContent += row.join(separator) + '\n';
+      });
     }
 
     const filename = `Relatorio_${activeTab.replace(/\s+/g, '_')}_${selectedMonth}_${selectedYear}.csv`;
@@ -113,7 +126,7 @@ export default function ReportsView({
 
   const handleExportSimulated = (format: 'CSV' | 'Excel' | 'PDF') => {
     if (format === 'CSV' || format === 'Excel') {
-      handleExportCSV();
+      handleExportCSV(format);
     } else {
       const filename = `Relatorio_${activeTab.replace(/\s+/g, '_')}_${selectedMonth}_${selectedYear}.${format.toLowerCase()}`;
       alert(`Exportação iniciada para o formato ${format}! O download do arquivo "${filename}" será processado brevemente.`);
@@ -205,7 +218,8 @@ export default function ReportsView({
               { tab: 'Folha Salarial', label: 'Folha Salarial Mensal' },
               { tab: 'INSS', label: 'Segurança Social (INSS)' },
               { tab: 'IRPS', label: 'Retenção na Fonte (IRPS)' },
-              { tab: 'Descontos', label: 'Mapa Geral de Descontos' }
+              { tab: 'Descontos', label: 'Mapa Geral de Descontos' },
+              { tab: 'Lista de Funcionários', label: 'Lista de Funcionários' }
             ].map(item => (
               <button
                 key={item.tab}
@@ -235,7 +249,7 @@ export default function ReportsView({
               className="bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 font-bold px-3 py-2 rounded-xl text-xs flex items-center space-x-1.5 cursor-pointer"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Imprimir Mapa Geral</span>
+              <span title="Imprimir Mapa Geral (Ctrl+P)">Imprimir Mapa Geral</span>
             </button>
 
             <button
@@ -446,6 +460,40 @@ export default function ReportsView({
                       <td className="py-4 px-3 font-mono text-rose-700">-{formatMT(sumAbsenceDeduction)}</td>
                       <td className="py-4 px-3 font-mono text-rose-700">-{formatMT(paymentsInInterval.reduce((sum, p) => sum + (p.impostos.inssTrabalhador + p.impostos.irps), 0))}</td>
                       <td className="py-4 px-6 text-right font-mono text-rose-950 text-sm bg-rose-100/50">-{formatMT(sumVales + sumAbsenceDeduction + sumInssTrabalhador + sumIrps)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              )}
+
+              {activeTab === 'Lista de Funcionários' && (
+                <table className="w-full text-left border-collapse" id="report-sheet-employee-list">
+                  <thead>
+                    <tr className="border-b border-slate-100 text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-50/10">
+                      <th className="py-4 px-6">Nome</th>
+                      <th className="py-4 px-3">Email</th>
+                      <th className="py-4 px-3">Cargo</th>
+                      <th className="py-4 px-3">Departamento</th>
+                      <th className="py-4 px-6 text-right font-black">Estado</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-50 text-xs font-semibold text-slate-700">
+                    {employees.map(emp => (
+                      <tr key={emp.id} className="hover:bg-slate-50/20 transition-colors">
+                        <td className="py-4 px-6 font-bold text-slate-800">{emp.nome}</td>
+                        <td className="py-4 px-3 text-slate-500">{emp.email}</td>
+                        <td className="py-4 px-3">{emp.cargo}</td>
+                        <td className="py-4 px-3">{emp.departamento}</td>
+                        <td className="py-4 px-6 text-right">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${emp.estado === 'Ativo' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            {emp.estado}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                    <tr className="bg-slate-50/80 font-black border-t-2 border-slate-200">
+                      <td className="py-4 px-6 text-slate-800">TOTAL FUNCIONÁRIOS</td>
+                      <td colSpan={3}></td>
+                      <td className="py-4 px-6 text-right font-mono text-slate-800 text-sm">{employees.length}</td>
                     </tr>
                   </tbody>
                 </table>

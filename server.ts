@@ -1,3 +1,4 @@
+import { GoogleGenAI } from "@google/genai";
 import express from "express";
 import path from "path";
 import cors from "cors";
@@ -13,6 +14,28 @@ async function startServer() {
   app.use(express.json());
 
   // API routes FIRST
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const apiKey = process.env.GEMINI_API_KEY;
+      if (!apiKey) return res.status(500).json({ error: "GEMINI_API_KEY is missing" });
+      const ai = new GoogleGenAI({ apiKey });
+      const { messages, context } = req.body;
+      let systemInstruction = "You are HRPay Pro AI, an intelligent Human Resources Assistant. You speak Portuguese. You help HR managers, administrators, and employees with tasks like drafting contracts, summarizing data, and answering HR policy questions. Format responses cleanly in Markdown.";
+      if (context) {
+        systemInstruction += "\n\nHere is some context about the current state/data:\n" + JSON.stringify(context);
+      }
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: messages,
+        config: { systemInstruction }
+      });
+      res.json({ text: response.text });
+    } catch (error: any) {
+      console.error("AI Chat Error:", error);
+      res.status(500).json({ error: error.message || "AI processing failed" });
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
